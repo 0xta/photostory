@@ -14,9 +14,12 @@
   <header class="app-header">
     <div class="header-left">
       <h1 class="app-title">🎞️ เรื่องราว <span class="year">2026</span></h1>
+      <div class="header-search">
+        <input type="search" id="input-global-search" class="input input-sm mono" placeholder="🔍 ค้นหา (สยามพารากอน, เพื่อน, อาหาร)..." />
+      </div>
     </div>
     <div class="header-right">
-      <button class="btn btn-primary btn-sm" id="btn-header-import">+ นำเข้ารูป</button>
+      <button class="btn btn-primary btn-sm btn-open-import">+ นำเข้ารูป</button>
       <div class="theme-switcher">
         <button class="theme-btn" data-theme="light" title="สว่าง">☀️</button>
         <button class="theme-btn" data-theme="warm" title="อบอุ่น">🕯️</button>
@@ -42,9 +45,9 @@
 
   <!-- ── Main content area ────────────────────────────────── -->
   <main class="main-content">
-    <!-- Dashboard view -->
+    <!-- ── Dashboard View ── -->
     <section id="view-dashboard" class="view active">
-      <div id="dashboard-empty" class="empty-state">
+      <div id="dashboard-empty" class="empty-state" style="display: none;">
         <div class="empty-icon">🎞️</div>
         <h2>เริ่มบันทึกเรื่องราวของคุณ</h2>
         <p>นำเข้ารูปจากมือถือหรือโฟลเดอร์ — ระบบจะอ่านวันที่และ GPS จากไฟล์ แล้วจัดกลุ่มเป็นเหตุการณ์ให้อัตโนมัติ ทุกอย่างประมวลผลในเครื่องคุณ ไม่มีการอัปโหลด ไม่ใช้ AI API</p>
@@ -54,8 +57,8 @@
         </div>
       </div>
 
-      <div id="dashboard-content" style="display: none;">
-        <!-- Stats cards -->
+      <div id="dashboard-content">
+        <!-- Totals Cards (FR-701) -->
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-label">รูปภาพทั้งหมด</div>
@@ -69,48 +72,398 @@
             <div class="stat-label">เพื่อนที่บันทึก</div>
             <div class="stat-value mono" id="stat-friends">0</div>
           </div>
+          <div class="stat-card">
+            <div class="stat-label">ติดแท็กแล้ว</div>
+            <div class="stat-value mono" id="stat-tagged-pct">0%</div>
+          </div>
         </div>
 
-        <div class="section-header">
-          <h2 class="view-title">เหตุการณ์ล่าสุด</h2>
-          <button class="btn btn-sm" onclick="switchTab('events')">ดูทั้งหมด →</button>
+        <!-- 2-column Dashboard Row -->
+        <div class="dashboard-row">
+          <!-- Monthly Histogram (FR-702) -->
+          <div class="dash-card">
+            <div class="card-title-row">
+              <h3 class="card-title">📊 จังหวะการถ่ายรายเดือน 2026</h3>
+              <span class="muted" style="font-size: 0.78rem;">คลิกแท่งเพื่อกรองเดือน</span>
+            </div>
+            <div class="histogram-chart" id="dashboard-histogram">
+              <!-- 12 Bars rendered via JS -->
+            </div>
+          </div>
+
+          <!-- Review Queue "รอคุณเติมข้อมูล" (FR-704) -->
+          <div class="dash-card">
+            <div class="card-title-row">
+              <h3 class="card-title">⏳ รอคุณเติมข้อมูล</h3>
+            </div>
+            <div class="queue-list" id="dashboard-queue">
+              <div class="queue-item" id="queue-dateless-item">
+                <div class="queue-info">
+                  <span class="queue-title">รูปไม่มีวันที่ใน EXIF</span>
+                  <span class="queue-sub muted" id="queue-dateless-desc">0 รูป</span>
+                </div>
+                <button class="btn btn-sm" id="btn-jump-dateless">ช่วยเติมที →</button>
+              </div>
+              <div class="queue-item" id="queue-unnamed-item">
+                <div class="queue-info">
+                  <span class="queue-title">เหตุการณ์รอตั้งชื่อ</span>
+                  <span class="queue-sub muted" id="queue-unnamed-desc">0 เหตุการณ์</span>
+                </div>
+                <button class="btn btn-sm" id="btn-jump-unnamed">ตั้งชื่อ →</button>
+              </div>
+              <div class="queue-item" id="queue-burst-item">
+                <div class="queue-info">
+                  <span class="queue-title">⚡ รัวช็อต — เก็บใบที่ดีที่สุด</span>
+                  <span class="queue-sub muted" id="queue-burst-desc">0 รูป</span>
+                </div>
+                <button class="btn btn-sm" id="btn-jump-burst">คัดเลือก →</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="events-grid" id="dashboard-events"></div>
+
+        <!-- Top Friends & Recent Events -->
+        <div class="dashboard-row" style="margin-top: 1rem;">
+          <div class="dash-card">
+            <div class="card-title-row">
+              <h3 class="card-title">👥 เพื่อนที่ถ่ายด้วยบ่อยสุด</h3>
+              <button class="btn btn-sm" onclick="switchTab('friends')">ดูทั้งหมด →</button>
+            </div>
+            <div class="top-friends-list" id="dashboard-top-friends">
+              <p class="muted" style="font-size: 0.85rem;">ยังไม่มีรูปที่ติดแท็กเพื่อน</p>
+            </div>
+          </div>
+
+          <div class="dash-card">
+            <div class="card-title-row">
+              <h3 class="card-title">🎞️ เหตุการณ์ล่าสุด</h3>
+              <button class="btn btn-sm" onclick="switchTab('events')">ดูทั้งหมด →</button>
+            </div>
+            <div class="events-grid" id="dashboard-events"></div>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- Events view -->
+    <!-- ── Events View (FR-301..303) ── -->
     <section id="view-events" class="view">
+      <!-- Dateless tray (if any) -->
+      <div id="events-dateless-tray" class="dateless-tray" style="display: none;">
+        <div class="tray-content">
+          <span>⚠️ มีรูปภาพที่ไม่มีวันที่ใน EXIF <strong id="dateless-tray-count">0</strong> ใบ</span>
+          <button class="btn btn-sm btn-primary" id="btn-tray-view-dateless">ดูรูปที่ไม่มีวันที่</button>
+        </div>
+      </div>
+
       <div class="section-header">
-        <h2 class="view-title">เหตุการณ์ทั้งหมด</h2>
+        <h2 class="view-title">เหตุการณ์ (จัดกลุ่มอัตโนมัติตามเวลาและพิกัด)</h2>
         <button class="btn btn-sm" id="btn-recluster">🔄 จัดกลุ่มใหม่</button>
       </div>
       <div class="events-grid" id="events-list"></div>
     </section>
 
-    <!-- Photos view -->
+    <!-- ── Photos View (FR-401..405, 601) ── -->
     <section id="view-photos" class="view">
-      <div class="section-header">
-        <h2 class="view-title">รูปทั้งหมด</h2>
-        <span class="muted mono" id="photos-count-label"></span>
+      <!-- Comprehensive Filter Bar -->
+      <div class="filter-bar card">
+        <!-- Category chips filter -->
+        <div class="filter-row">
+          <span class="filter-label">หมวดหมู่:</span>
+          <div class="cat-chips" id="filter-cats">
+            <!-- 7 Fixed category pills -->
+          </div>
+        </div>
+
+        <!-- Secondary filters: friend, month, GPS, burst -->
+        <div class="filter-row" style="margin-top: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+          <div class="filter-item">
+            <label class="filter-label" for="filter-friend">เพื่อน:</label>
+            <select id="filter-friend" class="input input-sm">
+              <option value="">ทั้งหมด</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label class="filter-label" for="filter-month">เดือน:</label>
+            <select id="filter-month" class="input input-sm">
+              <option value="">ทุกเดือน</option>
+              <option value="1">ม.ค. (มกราคม)</option>
+              <option value="2">ก.พ. (กุมภาพันธ์)</option>
+              <option value="3">มี.ค. (มีนาคม)</option>
+              <option value="4">เม.ย. (เมษายน)</option>
+              <option value="5">พ.ค. (พฤษภาคม)</option>
+              <option value="6">มิ.ย. (มิถุนายน)</option>
+              <option value="7">ก.ค. (กรกฎาคม)</option>
+              <option value="8">ส.ค. (สิงหาคม)</option>
+              <option value="9">ก.ย. (กันยายน)</option>
+              <option value="10">ต.ค. (ตุลาคม)</option>
+              <option value="11">พ.ย. (พฤศจิกายน)</option>
+              <option value="12">ธ.ค. (ธันวาคม)</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label class="filter-label" for="filter-gps">พิกัด GPS:</label>
+            <select id="filter-gps" class="input input-sm">
+              <option value="">ทั้งหมด</option>
+              <option value="yes">มี GPS</option>
+              <option value="no">ไม่มี GPS</option>
+              <option value="nodate">ไม่มีวันที่</option>
+            </select>
+          </div>
+          <div class="filter-item" style="display: flex; align-items: center; gap: 0.35rem;">
+            <input type="checkbox" id="filter-burst" />
+            <label for="filter-burst" style="font-size: 0.85rem; cursor: pointer;">⚡ รัวช็อตเท่านั้น</label>
+          </div>
+
+          <div style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+            <span class="muted mono" id="photos-filter-count" style="font-size: 0.82rem;">0 รูป</span>
+            <button class="btn btn-sm" id="btn-clear-filters">ล้างตัวกรอง</button>
+          </div>
+        </div>
       </div>
-      <div class="photos-grid" id="photos-list"></div>
+
+      <!-- Photo Grid -->
+      <div class="photos-grid" id="photos-list" style="margin-top: 1rem;"></div>
     </section>
 
-    <!-- Friends view -->
+    <!-- ── Friends View (FR-501..505) ── -->
     <section id="view-friends" class="view">
-      <h2 class="view-title">เพื่อน</h2>
-      <p class="muted">Phase 1C จะเพิ่มระบบบันทึกโปรไฟล์เพื่อนและสถิติการเจอกัน</p>
+      <div class="section-header">
+        <h2 class="view-title">เพื่อนและความสัมพันธ์</h2>
+        <button class="btn btn-primary btn-sm" id="btn-add-friend">+ เพิ่มเพื่อนใหม่</button>
+      </div>
+      <div class="friends-grid" id="friends-list"></div>
     </section>
 
-    <!-- Map view -->
+    <!-- ── Map View (Phase 1E placeholder) ── -->
     <section id="view-map" class="view">
-      <h2 class="view-title">แผนที่</h2>
-      <p class="muted">Phase 1E จะเพิ่มแผนที่พิกัด GPS</p>
+      <h2 class="view-title">แผนที่พิกัดภาพถ่าย</h2>
+      <p class="muted">Phase 1E จะเชื่อมต่อแผนที่ Leaflet.js</p>
     </section>
   </main>
 
-  <!-- ── Modal: นำเข้ารูป ──────────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════════
+       MODALS & DIALOGS
+       ══════════════════════════════════════════════════════════ -->
+
+  <!-- ── 1. Modal: Photo Detail Modal (FR-402) ─────────────── -->
+  <div id="modal-photo" class="modal-backdrop" style="display: none;">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="modal-title mono" id="photo-modal-filename">photo.jpg</span>
+          <span id="photo-modal-burst-badge" class="burst-badge" style="display: none;">⚡ รัวช็อต</span>
+        </div>
+        <button class="btn-close" id="btn-close-photo-modal">&times;</button>
+      </div>
+      <div class="modal-body photo-modal-layout">
+        <!-- Left: Image Preview + Prev/Next -->
+        <div class="photo-preview-box">
+          <img id="photo-modal-img" src="" alt="preview" />
+          <button class="nav-arrow nav-prev" id="btn-photo-prev" title="รูปก่อนหน้า (←)">&#10094;</button>
+          <button class="nav-arrow nav-next" id="btn-photo-next" title="รูปถัดไป (→)">&#10095;</button>
+        </div>
+
+        <!-- Right: Metadata & Tagging Controls -->
+        <div class="photo-sidebar">
+          <!-- EXIF Data panel -->
+          <div class="meta-section">
+            <h4 class="meta-heading">ข้อมูลภาพ (EXIF)</h4>
+            <div class="meta-grid mono">
+              <div><span class="muted">วันที่:</span> <span id="photo-modal-date">-</span></div>
+              <div><span class="muted">เวลา:</span> <span id="photo-modal-time">-</span></div>
+              <div><span class="muted">พิกัด:</span> <span id="photo-modal-gps">-</span></div>
+              <div><span class="muted">ขนาด:</span> <span id="photo-modal-dims">-</span></div>
+              <div><span class="muted">เหตุการณ์:</span> <span id="photo-modal-event">-</span></div>
+            </div>
+            <!-- Date editor if missing or need to fix -->
+            <div class="date-fix-box" id="photo-date-editor" style="margin-top: 0.5rem;">
+              <label class="form-label" for="input-edit-date">แก้ไขวันที่–เวลา:</label>
+              <div style="display: flex; gap: 0.4rem;">
+                <input type="datetime-local" id="input-edit-date" class="input input-sm mono" />
+                <button class="btn btn-sm" id="btn-save-date">บันทึกวันที่</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category Chips (FR-402 / Appendix B) -->
+          <div class="meta-section">
+            <h4 class="meta-heading">หมวดหมู่</h4>
+            <div class="cat-chips" id="photo-modal-cats"></div>
+          </div>
+
+          <!-- Friends in Photo (FR-402) -->
+          <div class="meta-section">
+            <h4 class="meta-heading">เพื่อนในรูป</h4>
+            <div class="friend-chips" id="photo-modal-friends"></div>
+          </div>
+
+          <!-- Note with Thai Voice Input (FR-402) -->
+          <div class="meta-section">
+            <div class="flex-between">
+              <h4 class="meta-heading">บันทึกช่วยจำ</h4>
+              <button class="btn-voice" id="btn-voice-photo-note" title="พูดบันทึกภาษาไทย">🎙️ พูด</button>
+            </div>
+            <textarea id="photo-modal-note" class="input" rows="2" placeholder="เพิ่มบันทึกเกี่ยวกับรูปนี้ (หรือกด 🎙️ พูดภาษาไทย)..."></textarea>
+            <button class="btn btn-sm" id="btn-save-photo-note" style="margin-top: 0.4rem;">บันทึกโน้ต</button>
+          </div>
+
+          <!-- Delete action (FR-405) -->
+          <div class="meta-section" style="border-top: 1px solid var(--line); padding-top: 0.8rem; margin-top: auto;">
+            <button class="btn btn-danger btn-sm" id="btn-delete-photo">ลบรูปนี้ออกจากคลัง</button>
+            <span class="muted" style="font-size: 0.72rem; display: block; margin-top: 0.2rem;">
+              (ลบเฉพาะจากฐานข้อมูล — ไฟล์ต้นฉบับในเครื่องคุณไม่ถูกลบ)
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 2. Modal: Event Detail Modal (FR-302) ─────────────── -->
+  <div id="modal-event" class="modal-backdrop" style="display: none;">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title" id="event-modal-title">รายละเอียดเหตุการณ์</h3>
+        <button class="btn-close" id="btn-close-event-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <div class="flex-between">
+              <label class="form-label" for="event-edit-name">ชื่อเหตุการณ์</label>
+              <button class="btn-voice" id="btn-voice-event-name" title="พูดชื่อเหตุการณ์">🎙️ พูด</button>
+            </div>
+            <input type="text" id="event-edit-name" class="input" placeholder="เช่น ทริปเชียงใหม่, งานสัมมนาไอที" />
+          </div>
+          <div class="form-group flex-1">
+            <div class="flex-between">
+              <label class="form-label" for="event-edit-place">สถานที่</label>
+              <button class="btn-voice" id="btn-voice-event-place" title="พูดสถานที่">🎙️ พูด</button>
+            </div>
+            <input type="text" id="event-edit-place" class="input" placeholder="เช่น สยามพารากอน กรุงเทพฯ" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="flex-between">
+            <label class="form-label" for="event-edit-note">บันทึกช่วยจำ</label>
+            <button class="btn-voice" id="btn-voice-event-note" title="พูดบันทึกช่วยจำ">🎙️ พูด</button>
+          </div>
+          <textarea id="event-edit-note" class="input" rows="2" placeholder="บันทึกรายละเอียดของเหตุการณ์นี้..."></textarea>
+        </div>
+
+        <div class="meta-section">
+          <h4 class="meta-heading">ข้อมูลสถิติ</h4>
+          <div class="meta-grid mono" id="event-modal-stats"></div>
+        </div>
+
+        <div class="meta-section" style="margin-top: 0.8rem;">
+          <h4 class="meta-heading">รูปภาพในเหตุการณ์นี้</h4>
+          <div class="photos-grid" id="event-modal-photos" style="max-height: 260px; overflow-y: auto;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-close-event-footer">ปิด</button>
+        <button class="btn btn-primary" id="btn-save-event">บันทึกข้อมูลเหตุการณ์</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 3. Modal: Friend Detail Modal (FR-502..504) ────────── -->
+  <div id="modal-friend-detail" class="modal-backdrop" style="display: none;">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <div class="friend-avatar-lg" id="friend-detail-avatar">?</div>
+          <div>
+            <h3 class="modal-title" id="friend-detail-name">ชื่อเพื่อน</h3>
+            <span class="muted" id="friend-detail-nick"></span>
+          </div>
+        </div>
+        <button class="btn-close" id="btn-close-friend-detail">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- 4 Auto-stats cards (FR-502 / AC-7) -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">รูปที่ถ่ายด้วยกัน</div>
+            <div class="stat-value mono" id="friend-stat-photos">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">เหตุการณ์ที่เจอ</div>
+            <div class="stat-value mono" id="friend-stat-events">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">เจอครั้งแรก</div>
+            <div class="stat-value-sm mono" id="friend-stat-first">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">เจอล่าสุด</div>
+            <div class="stat-value-sm mono" id="friend-stat-last">-</div>
+          </div>
+        </div>
+
+        <!-- Meeting timeline (FR-503) -->
+        <div class="meta-section">
+          <h4 class="meta-heading">ไทม์ไลน์ที่เจอกัน</h4>
+          <div class="timeline-list" id="friend-detail-timeline"></div>
+        </div>
+
+        <!-- Photos tagged with this person (FR-504) -->
+        <div class="meta-section" style="margin-top: 0.8rem;">
+          <h4 class="meta-heading">รูปภาพที่ถ่ายด้วยกัน</h4>
+          <div class="photos-grid" id="friend-detail-photos" style="max-height: 220px; overflow-y: auto;"></div>
+        </div>
+      </div>
+      <div class="modal-footer flex-between">
+        <button class="btn btn-danger btn-sm" id="btn-delete-friend">ลบเพื่อนคนนี้</button>
+        <button class="btn" id="btn-close-friend-footer">ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4. Modal: Add Friend Modal (FR-501) ───────────────── -->
+  <div id="modal-add-friend" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">👤 เพิ่มเพื่อนใหม่</h3>
+        <button class="btn-close" id="btn-close-add-friend">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <div class="flex-between">
+            <label class="form-label" for="input-friend-name">ชื่อ (จำเป็น)</label>
+            <button class="btn-voice" id="btn-voice-friend-name" title="พูดชื่อเพื่อน">🎙️ พูด</button>
+          </div>
+          <input type="text" id="input-friend-name" class="input" placeholder="เช่น น้องพลอย, พี่กานต์" required />
+        </div>
+        <div class="form-group">
+          <div class="flex-between">
+            <label class="form-label" for="input-friend-nick">ชื่อเล่น</label>
+            <button class="btn-voice" id="btn-voice-friend-nick" title="พูดชื่อเล่น">🎙️ พูด</button>
+          </div>
+          <input type="text" id="input-friend-nick" class="input" placeholder="เช่น Ploy, Karn" />
+        </div>
+        <div class="form-group">
+          <div class="flex-between">
+            <label class="form-label" for="input-friend-note">บันทึกช่วยจำ</label>
+            <button class="btn-voice" id="btn-voice-friend-note" title="พูดบันทึกช่วยจำ">🎙️ พูด</button>
+          </div>
+          <textarea id="input-friend-note" class="input" rows="2" placeholder="เช่น เพื่อนมัธยม, เพื่อนร่วมงานที่บริษัท..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">เลือกสีประจำตัว</label>
+          <div class="color-palette-picker" id="friend-color-picker"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-cancel-add-friend">ยกเลิก</button>
+        <button class="btn btn-primary" id="btn-save-new-friend">บันทึกเพื่อน</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 5. Modal: Import Photos ───────────────────────────── -->
   <div id="modal-import" class="modal-backdrop" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
@@ -141,7 +494,7 @@
     </div>
   </div>
 
-  <!-- ── Progress Overlay: กำลังอ่านฟิล์ม… ────────────────── -->
+  <!-- ── 6. Progress Overlay: กำลังอ่านฟิล์ม… ────────────────── -->
   <div id="overlay-progress" class="modal-backdrop" style="display: none;">
     <div class="modal-card progress-card">
       <div class="progress-header">

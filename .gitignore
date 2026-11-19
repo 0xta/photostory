@@ -5,3 +5,5 @@ dist/
 .env
 changelog.md
 test/fixtures/photos/
+photo/
+photos/
