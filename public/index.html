@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>เรื่องราว 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ── Header ───────────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="header-left">
+      <h1 class="app-title">🎞️ เรื่องราว <span class="year">2026</span></h1>
+    </div>
+    <div class="header-right">
+      <div class="theme-switcher">
+        <button class="theme-btn" data-theme="light" title="สว่าง">☀️</button>
+        <button class="theme-btn" data-theme="warm" title="อบอุ่น">🕯️</button>
+        <button class="theme-btn" data-theme="dark" title="มืด">🌙</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Tab bar ──────────────────────────────────────────── -->
+  <nav class="tab-bar" role="tablist">
+    <button class="tab active" data-tab="dashboard" role="tab" aria-selected="true">ภาพรวม</button>
+    <button class="tab" data-tab="events" role="tab">เหตุการณ์</button>
+    <button class="tab" data-tab="photos" role="tab">รูปทั้งหมด</button>
+    <button class="tab" data-tab="friends" role="tab">เพื่อน</button>
+    <button class="tab" data-tab="map" role="tab">แผนที่</button>
+    <!-- Phase 1.5 tabs (hidden until implemented) -->
+    <button class="tab phase15" data-tab="stories" role="tab" style="display:none">เรื่องราว</button>
+    <button class="tab phase15" data-tab="meals" role="tab" style="display:none">มื้ออาหาร</button>
+    <button class="tab phase15" data-tab="places" role="tab" style="display:none">สถานที่</button>
+    <button class="tab phase15" data-tab="recap" role="tab" style="display:none">สรุปเดือน</button>
+    <button class="tab phase15" data-tab="suggestions" role="tab" style="display:none">กล่องข้อเสนอ</button>
+  </nav>
+
+  <!-- ── Main content area ────────────────────────────────── -->
+  <main class="main-content">
+    <!-- Dashboard view -->
+    <section id="view-dashboard" class="view active">
+      <div class="empty-state">
+        <div class="empty-icon">🎞️</div>
+        <h2>เริ่มบันทึกเรื่องราวของคุณ</h2>
+        <p>นำเข้ารูปจากมือถือหรือโฟลเดอร์ — ระบบจะอ่านวันที่และ GPS จากไฟล์ แล้วจัดกลุ่มเป็นเหตุการณ์ให้อัตโนมัติ ทุกอย่างประมวลผลในเครื่องคุณ ไม่มีการอัปโหลด ไม่ใช้ AI API</p>
+        <div class="empty-actions">
+          <button class="btn btn-primary" id="btn-import">+ นำเข้ารูป</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Events view -->
+    <section id="view-events" class="view">
+      <h2 class="view-title">เหตุการณ์</h2>
+      <p class="muted">Phase 1B จะเพิ่มการจัดกลุ่มอัตโนมัติ</p>
+    </section>
+
+    <!-- Photos view -->
+    <section id="view-photos" class="view">
+      <h2 class="view-title">รูปทั้งหมด</h2>
+      <p class="muted">Phase 1C จะเพิ่มการแสดงรูปและ filter</p>
+    </section>
+
+    <!-- Friends view -->
+    <section id="view-friends" class="view">
+      <h2 class="view-title">เพื่อน</h2>
+      <p class="muted">Phase 1C จะเพิ่มการจัดการเพื่อน</p>
+    </section>
+
+    <!-- Map view -->
+    <section id="view-map" class="view">
+      <h2 class="view-title">แผนที่</h2>
+      <p class="muted">Phase 1E จะเพิ่มแผนที่ GPS</p>
+    </section>
+  </main>
+
+  <!-- ── Status bar ───────────────────────────────────────── -->
+  <footer class="status-bar">
+    <span id="status-text">พร้อมใช้งาน</span>
+    <span id="status-counts" class="mono"></span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
