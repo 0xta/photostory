@@ -5,11 +5,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Import DB to ensure schema is initialized on startup
-import db, { getAllSettings, setSetting } from './db.js';
+import db from './db.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { importRoutes } from './routes/import.js';
 import { eventsRoutes } from './routes/events.js';
 import { photosRoutes } from './routes/photos.js';
+import { personsRoutes } from './routes/persons.js';
+import { searchRoutes } from './routes/search.js';
+import { dashboardRoutes } from './routes/dashboard.js';
+import { settingsRoutes } from './routes/settings.js';
+import { backupRoutes } from './routes/backup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -21,6 +26,11 @@ app.register(jobsRoutes);
 app.register(importRoutes);
 app.register(eventsRoutes);
 app.register(photosRoutes);
+app.register(personsRoutes);
+app.register(searchRoutes);
+app.register(dashboardRoutes);
+app.register(settingsRoutes);
+app.register(backupRoutes);
 
 // ── Serve static frontend ───────────────────────────────────────
 app.register(fastifyStatic, {
@@ -42,24 +52,9 @@ app.get('/api/health', async () => {
   return {
     status: 'ok',
     version: '0.1.0',
-    phase: '1A',
+    phase: '1C',
     counts: { photos: photoCount, events: eventCount, persons: personCount },
   };
-});
-
-// ── Settings routes (basic, for theme switching) ────────────────
-app.get('/api/settings', async () => {
-  return getAllSettings();
-});
-
-app.patch('/api/settings', async (req) => {
-  const body = req.body as Record<string, string>;
-  if (body && typeof body === 'object') {
-    for (const [key, value] of Object.entries(body)) {
-      setSetting(key, String(value));
-    }
-  }
-  return getAllSettings();
 });
 
 // ── Start ───────────────────────────────────────────────────────
