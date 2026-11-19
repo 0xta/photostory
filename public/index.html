@@ -53,6 +53,7 @@
         <p>นำเข้ารูปจากมือถือหรือโฟลเดอร์ — ระบบจะอ่านวันที่และ GPS จากไฟล์ แล้วจัดกลุ่มเป็นเหตุการณ์ให้อัตโนมัติ ทุกอย่างประมวลผลในเครื่องคุณ ไม่มีการอัปโหลด ไม่ใช้ AI API</p>
         <div class="empty-actions">
           <button class="btn btn-primary btn-open-import">+ นำเข้ารูป</button>
+          <button class="btn btn-primary" id="btn-quick-photo">📸 นำเข้าจากโฟลเดอร์ photo</button>
           <button class="btn" id="btn-quick-fixtures">ลองด้วยข้อมูลตัวอย่าง</button>
         </div>
       </div>
@@ -480,11 +481,13 @@
             type="text"
             id="import-folder-path"
             class="input mono"
-            placeholder="เช่น D:\photos หรือ test/fixtures/photos"
+            placeholder="เช่น photo หรือ D:\photos"
+            value="photo"
           />
         </div>
-        <div style="margin-top: 0.6rem;">
-          <button class="btn btn-sm" id="btn-fill-fixtures">✨ ใช้โฟลเดอร์ตัวอย่าง (test/fixtures/photos)</button>
+        <div style="margin-top: 0.6rem; display: flex; gap: 0.4rem; flex-wrap: wrap;">
+          <button class="btn btn-sm btn-primary" id="btn-fill-photo">📸 ใช้โฟลเดอร์ photo</button>
+          <button class="btn btn-sm" id="btn-fill-fixtures">✨ โฟลเดอร์ทดสอบ (test/fixtures/photos)</button>
         </div>
       </div>
       <div class="modal-footer">

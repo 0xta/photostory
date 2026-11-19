@@ -990,8 +990,14 @@ async function init() {
       document.getElementById('import-folder-path').focus();
     });
   });
+  document.getElementById('btn-fill-photo')?.addEventListener('click', () => {
+    document.getElementById('import-folder-path').value = 'photo';
+  });
   document.getElementById('btn-fill-fixtures')?.addEventListener('click', () => {
     document.getElementById('import-folder-path').value = 'test/fixtures/photos';
+  });
+  document.getElementById('btn-quick-photo')?.addEventListener('click', () => {
+    startImport('photo');
   });
   document.getElementById('btn-quick-fixtures')?.addEventListener('click', () => {
     startImport('test/fixtures/photos');
