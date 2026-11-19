@@ -8,6 +8,7 @@ const testFiles = [
   'test/phase1c.test.ts',
   'test/phase1d.test.ts',
   'test/phase1e.test.ts',
+  'test/phase15a.test.ts',
 ];
 
 console.log('========================================================');

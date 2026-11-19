@@ -41,6 +41,12 @@ let currentMapMode = 'photos'; // 'photos' | 'events'
 let mapData = null;
 let selectedMapCoord = null;
 
+// Stories & Suggestions state (Phase 1.5A)
+let allStories = [];
+let currentStoryFilter = '';
+let currentStoryDetail = null;
+let allSuggestions = [];
+
 // Filter state for Photos tab (FR-601)
 const photoFilters = {
   cat: '',
@@ -222,6 +228,8 @@ function switchTab(tabName) {
   if (tabName === 'events') loadEvents();
   if (tabName === 'photos') loadPhotos();
   if (tabName === 'friends') loadFriends();
+  if (tabName === 'stories') loadStories();
+  if (tabName === 'suggestions') loadSuggestions();
   if (tabName === 'map') {
     loadMap(true);
     setTimeout(() => {
@@ -592,6 +600,18 @@ async function openPhotoModal(photoId) {
       openAddFriendModal();
     });
     friendsContainer.appendChild(addFriendBtn);
+
+    // Collections picker in photo modal (Phase 1.5A)
+    const collSelect = document.getElementById('photo-select-collection');
+    if (collSelect) {
+      collSelect.innerHTML = '<option value="">-- เลือกเรื่องราวเพื่อเพิ่มรูปนี้ --</option>';
+      allStories.forEach((s) => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = `${s.name} (${s.photo_count} รูป)`;
+        collSelect.appendChild(opt);
+      });
+    }
 
     document.getElementById('modal-photo').style.display = 'flex';
   } catch (err) {
@@ -965,6 +985,268 @@ window.openPhotoModal = openPhotoModal;
 window.openEventDetail = openEventDetail;
 window.findNearbyPhotos = findNearbyPhotos;
 
+// ── Stories & Collections View (Phase 1.5A, FR-1001..1006) ───
+async function loadStories() {
+  try {
+    const url = currentStoryFilter
+      ? `/collections?type=${encodeURIComponent(currentStoryFilter)}`
+      : '/collections';
+    const res = await api(url);
+    allStories = res.items;
+
+    const countEl = document.getElementById('stories-count');
+    if (countEl) countEl.textContent = `${allStories.length} เรื่องราว`;
+
+    const listEl = document.getElementById('stories-list');
+    if (!listEl) return;
+
+    if (allStories.length === 0) {
+      listEl.innerHTML = `
+        <div class="empty-state" style="grid-column: 1 / -1; padding: 2rem;">
+          <div class="empty-icon">📖</div>
+          <h3>ยังไม่มีเรื่องราว</h3>
+          <p class="muted">กดปุ่ม "+ สร้างเรื่องราวใหม่" เพื่อรวมภาพตามหัวข้อ โปรเจกต์ หรือความทรงจำ</p>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = '';
+    allStories.forEach((story) => {
+      const card = document.createElement('div');
+      card.className = 'story-card';
+
+      const typeLabel =
+        story.type === 'place_project'
+          ? '🏗️ โปรเจกต์'
+          : story.type === 'topic'
+          ? '📌 หัวข้อ'
+          : '🎨 กำหนดเอง';
+
+      card.innerHTML = `
+        <div class="story-cover-box">
+          ${
+            story.cover_photo_id
+              ? `<img src="/api/thumbs/${story.cover_photo_id}" alt="${escapeHtml(story.name)}" />`
+              : `<div class="story-cover-placeholder">📖</div>`
+          }
+          <span class="story-badge-count mono">📸 ${story.photo_count} รูป</span>
+        </div>
+        <div class="story-info">
+          <div class="flex-between">
+            <span class="type-pill ${story.type}">${typeLabel}</span>
+          </div>
+          <h3 class="story-title" title="${escapeHtml(story.name)}">${escapeHtml(story.name)}</h3>
+          ${story.note ? `<p class="story-note">${escapeHtml(story.note)}</p>` : ''}
+        </div>
+      `;
+
+      card.addEventListener('click', () => openStoryDetail(story.id));
+      listEl.appendChild(card);
+    });
+  } catch {
+    showToast('ไม่สามารถโหลดเรื่องราวได้', 'error');
+  }
+}
+
+async function openStoryDetail(storyId) {
+  try {
+    const story = await api(`/collections/${storyId}`);
+    currentStoryDetail = story;
+
+    document.getElementById('story-detail-title').textContent = story.name;
+    document.getElementById('story-detail-note').textContent = story.note || '';
+
+    const badgeEl = document.getElementById('story-detail-type-badge');
+    badgeEl.className = `type-pill ${story.type}`;
+    badgeEl.textContent =
+      story.type === 'place_project'
+        ? '🏗️ โปรเจกต์'
+        : story.type === 'topic'
+        ? '📌 หัวข้อ'
+        : '🎨 กำหนดเอง';
+
+    document.getElementById('story-stat-photos').textContent = String(story.photos.length);
+    document.getElementById('story-stat-friends').textContent = `${(story.friends || []).length} คน`;
+
+    if (story.date_span && story.date_span.min && story.date_span.max) {
+      document.getElementById('story-stat-span').textContent =
+        story.date_span.min === story.date_span.max
+          ? formatThaiDateShort(story.date_span.min)
+          : `${formatThaiDateShort(story.date_span.min)} – ${formatThaiDateShort(story.date_span.max)}`;
+    } else {
+      document.getElementById('story-stat-span').textContent = '-';
+    }
+
+    const timelineContainer = document.getElementById('story-progress-timeline-container');
+    const gridContainer = document.getElementById('story-photos-grid-container');
+
+    if (story.type === 'place_project') {
+      timelineContainer.style.display = 'block';
+      gridContainer.style.display = 'none';
+
+      const timelineEl = document.getElementById('story-progress-timeline');
+      if (story.photos.length === 0) {
+        timelineEl.innerHTML = '<p class="muted" style="font-size:0.85rem;">ยังไม่มีรูปภาพในโปรเจกต์นี้</p>';
+      } else {
+        timelineEl.innerHTML = '';
+        story.photos.forEach((p, idx) => {
+          const item = document.createElement('div');
+          item.className = 'progress-timeline-item';
+          item.innerHTML = `
+            <img src="/api/thumbs/${p.id}" class="progress-thumb" alt="" onclick="openPhotoModal('${p.id}')" />
+            <div style="flex:1; min-width:0;">
+              <div style="font-weight:600; font-size:0.88rem;">ขั้นตอนที่ ${idx + 1}: ${escapeHtml(p.filename)}</div>
+              <div class="muted mono" style="font-size:0.75rem;">📅 ${formatThaiDate(p.taken_at)} ${formatTime(p.taken_at)}</div>
+              ${p.event_name ? `<div class="muted" style="font-size:0.75rem;">🎞️ ${escapeHtml(p.event_name)}</div>` : ''}
+              ${p.note ? `<div style="font-size:0.8rem; margin-top:0.2rem;">${escapeHtml(p.note)}</div>` : ''}
+            </div>
+            <button class="btn btn-sm btn-danger" onclick="removePhotoFromStory('${story.id}', '${p.id}')" title="ลบออกจากเรื่องราว">✕</button>
+          `;
+          timelineEl.appendChild(item);
+        });
+      }
+    } else {
+      timelineContainer.style.display = 'none';
+      gridContainer.style.display = 'block';
+
+      const photosEl = document.getElementById('story-detail-photos');
+      if (story.photos.length === 0) {
+        photosEl.innerHTML = '<p class="muted" style="font-size:0.85rem;">ยังไม่มีรูปภาพในเรื่องราวนี้</p>';
+      } else {
+        photosEl.innerHTML = '';
+        story.photos.forEach((p) => {
+          const card = document.createElement('div');
+          card.className = 'photo-card';
+          card.style.position = 'relative';
+          card.innerHTML = `
+            <img src="/api/thumbs/${p.id}" alt="${escapeHtml(p.filename)}" />
+            <div class="photo-info mono">
+              <span>${formatThaiDateShort(p.taken_at)}</span>
+            </div>
+            <button class="btn btn-sm btn-danger" style="position:absolute; top:4px; right:4px; padding:2px 6px; font-size:0.7rem; border-radius:4px;" onclick="event.stopPropagation(); removePhotoFromStory('${story.id}', '${p.id}')" title="ลบออกจากเรื่องราว">✕</button>
+          `;
+          card.addEventListener('click', () => openPhotoModal(p.id));
+          photosEl.appendChild(card);
+        });
+      }
+    }
+
+    document.getElementById('modal-story-detail').style.display = 'flex';
+  } catch {
+    showToast('ไม่สามารถเปิดรายละเอียดเรื่องราวได้', 'error');
+  }
+}
+
+async function removePhotoFromStory(storyId, photoId) {
+  try {
+    await api(`/collections/${storyId}/photos/${photoId}`, { method: 'DELETE' });
+    showToast('ลบรูปออกจากเรื่องราวเรียบร้อย', 'info');
+    openStoryDetail(storyId);
+    loadStories();
+  } catch {
+    showToast('ไม่สามารถลบรูปออกจากเรื่องราวได้', 'error');
+  }
+}
+
+// ── Suggestions Inbox (Phase 1.5A, Section 8.9 / DR10) ────────
+async function loadSuggestions() {
+  try {
+    const res = await api('/suggestions?status=pending');
+    allSuggestions = res.items;
+
+    // Update tab badge
+    const badge = document.getElementById('badge-suggestions');
+    if (badge) {
+      if (allSuggestions.length > 0) {
+        badge.style.display = 'inline-block';
+        badge.textContent = String(allSuggestions.length);
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    const listEl = document.getElementById('suggestions-list');
+    if (!listEl) return;
+
+    if (allSuggestions.length === 0) {
+      listEl.innerHTML = `
+        <div class="empty-state" style="padding: 2.5rem; text-align: center;">
+          <div class="empty-icon">✨</div>
+          <h3>ไม่มีข้อเสนอแนะค้างอยู่</h3>
+          <p class="muted">เมื่อคุณนำเข้ารูปหรือติดแท็ก ระบบจะประมวลผลกฎในเครื่องเพื่อแนะนำเรื่องราวใหม่ๆ ให้คุณที่นี่</p>
+          <button class="btn btn-sm btn-primary" onclick="scanSuggestions()" style="margin-top: 0.8rem;">🔄 ตรวจหาข้อเสนอตอนนี้</button>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = '';
+    allSuggestions.forEach((s) => {
+      const card = document.createElement('div');
+      card.className = 'suggestion-card';
+
+      const p = s.payload || {};
+      const icon = s.kind === 'collection_create' ? '✨' : '📌';
+
+      card.innerHTML = `
+        <div class="suggestion-icon">${icon}</div>
+        <div class="suggestion-content">
+          <div class="suggestion-title">${escapeHtml(p.title || 'ข้อเสนอแนะ')}</div>
+          <div class="suggestion-reason">${escapeHtml(p.reason || '')}</div>
+        </div>
+        <div class="suggestion-actions">
+          <button class="btn btn-sm btn-primary" onclick="acceptSuggestion('${s.id}')">✓ ยอมรับ</button>
+          <button class="btn btn-sm" onclick="dismissSuggestion('${s.id}')">✕ ข้าม</button>
+        </div>
+      `;
+      listEl.appendChild(card);
+    });
+  } catch {
+    showToast('ไม่สามารถโหลดกล่องข้อเสนอได้', 'error');
+  }
+}
+
+async function acceptSuggestion(id) {
+  try {
+    await api(`/suggestions/${id}/accept`, { method: 'POST' });
+    showToast('ยอมรับข้อเสนอเรียบร้อย', 'success');
+    loadSuggestions();
+    loadStories();
+    updateStatus();
+  } catch {
+    showToast('ไม่สามารถตอบรับข้อเสนอได้', 'error');
+  }
+}
+
+async function dismissSuggestion(id) {
+  try {
+    await api(`/suggestions/${id}/dismiss`, { method: 'POST' });
+    showToast('ข้ามข้อเสนอนี้แล้ว (จะไม่แนะนำซ้ำ)', 'info');
+    loadSuggestions();
+  } catch {
+    showToast('ไม่สามารถข้ามข้อเสนอได้', 'error');
+  }
+}
+
+async function scanSuggestions() {
+  try {
+    showToast('กำลังตรวจหากฎและรูปแบบในเครื่อง...', 'info');
+    const res = await api('/suggestions/scan', { method: 'POST' });
+    showToast(`ตรวจพบ ${res.added} ข้อเสนอใหม่`, 'success');
+    loadSuggestions();
+  } catch {
+    showToast('ไม่สามารถสแกนข้อเสนอได้', 'error');
+  }
+}
+
+// Global exposure for event handlers
+window.openStoryDetail = openStoryDetail;
+window.removePhotoFromStory = removePhotoFromStory;
+window.acceptSuggestion = acceptSuggestion;
+window.dismissSuggestion = dismissSuggestion;
+window.scanSuggestions = scanSuggestions;
+
 // ── Modals Close & Keyboard Navigation (FR-402, AC-15) ────────
 function closeAllModals() {
   document.querySelectorAll('.modal-backdrop').forEach((m) => {
@@ -1002,6 +1284,8 @@ async function init() {
   setupVoiceInput(document.getElementById('btn-voice-friend-name'), document.getElementById('input-friend-name'));
   setupVoiceInput(document.getElementById('btn-voice-friend-nick'), document.getElementById('input-friend-nick'));
   setupVoiceInput(document.getElementById('btn-voice-friend-note'), document.getElementById('input-friend-note'));
+  setupVoiceInput(document.getElementById('btn-voice-story-name'), document.getElementById('input-story-name'));
+  setupVoiceInput(document.getElementById('btn-voice-story-note'), document.getElementById('input-story-note'));
 
   // Close buttons for modals
   document.getElementById('btn-close-photo-modal')?.addEventListener('click', closeAllModals);
@@ -1011,6 +1295,10 @@ async function init() {
   document.getElementById('btn-close-friend-footer')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-close-add-friend')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-cancel-add-friend')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-create-story')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-cancel-create-story')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-story-detail')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-story-footer')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-close-import')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-cancel-import')?.addEventListener('click', closeAllModals);
 
@@ -1293,9 +1581,90 @@ async function init() {
     selectedMapCoord = null;
   });
 
+  // Stories & Collections controls (Phase 1.5A)
+  document.getElementById('btn-create-story')?.addEventListener('click', () => {
+    document.getElementById('input-story-name').value = '';
+    document.getElementById('input-story-note').value = '';
+    document.getElementById('select-story-type').value = 'topic';
+    document.getElementById('modal-create-story').style.display = 'flex';
+  });
+
+  document.getElementById('btn-save-new-story')?.addEventListener('click', async () => {
+    const name = document.getElementById('input-story-name').value.trim();
+    if (!name) {
+      showToast('กรุณาระบุชื่อเรื่องราว', 'error');
+      return;
+    }
+    const type = document.getElementById('select-story-type').value;
+    const note = document.getElementById('input-story-note').value.trim();
+
+    try {
+      await api('/collections', {
+        method: 'POST',
+        body: JSON.stringify({ name, type, note }),
+      });
+      document.getElementById('modal-create-story').style.display = 'none';
+      showToast(`สร้างเรื่องราว "${name}" เรียบร้อย`, 'success');
+      loadStories();
+    } catch (err) {
+      showToast(err.message || 'ไม่สามารถสร้างเรื่องราวได้', 'error');
+    }
+  });
+
+  document.getElementById('btn-delete-story')?.addEventListener('click', async () => {
+    if (!currentStoryDetail) return;
+    if (!confirm(`ต้องการลบเรื่องราว "${currentStoryDetail.name}" หรือไม่?\n(รูปภาพทั้งหมดในเครื่องจะไม่ถูกลบ)`)) {
+      return;
+    }
+    try {
+      await api(`/collections/${currentStoryDetail.id}`, { method: 'DELETE' });
+      document.getElementById('modal-story-detail').style.display = 'none';
+      showToast('ลบเรื่องราวเรียบร้อย (รูปภาพไม่ถูกลบ)', 'info');
+      loadStories();
+    } catch {
+      showToast('ไม่สามารถลบเรื่องราวได้', 'error');
+    }
+  });
+
+  // Story type filter buttons
+  document.querySelectorAll('[data-story-type]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-story-type]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentStoryFilter = btn.dataset.storyType;
+      loadStories();
+    });
+  });
+
+  // Add active photo to story button
+  document.getElementById('btn-add-photo-to-story')?.addEventListener('click', async () => {
+    const collId = document.getElementById('photo-select-collection')?.value;
+    if (!collId) {
+      showToast('กรุณาเลือกเรื่องราวก่อน', 'error');
+      return;
+    }
+    const currentPhoto = loadedPhotos[activePhotoIndex];
+    if (!currentPhoto) return;
+    try {
+      await api(`/collections/${collId}/photos`, {
+        method: 'POST',
+        body: JSON.stringify({ photo_ids: [currentPhoto.id] }),
+      });
+      showToast('เพิ่มรูปเข้าเรื่องราวสำเร็จ', 'success');
+      loadStories();
+    } catch {
+      showToast('ไม่สามารถเพิ่มรูปเข้าเรื่องราวได้', 'error');
+    }
+  });
+
+  // Suggestions controls (Phase 1.5A)
+  document.getElementById('btn-scan-suggestions')?.addEventListener('click', scanSuggestions);
+
   // Initial load
   await updateStatus();
   await loadFriends();
+  await loadStories();
+  await loadSuggestions();
   await loadDashboard();
 
   console.log('🎞️ เรื่องราว 2026 (Phase 1D Core) — ready');

@@ -1137,6 +1137,200 @@ body {
   }
 }
 
+/* ── Stories & Collections (Phase 1.5A) ───────────────────── */
+.stories-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+.story-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.story-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  box-shadow: 0 8px 20px var(--shadow);
+}
+.story-cover-box {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  background: var(--panel2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.story-cover-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.story-cover-placeholder {
+  font-size: 2.5rem;
+  color: var(--muted);
+}
+.story-badge-count {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(18, 21, 28, 0.85);
+  color: var(--ink);
+  font-size: 0.75rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.story-info {
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.story-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.story-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.35;
+}
+.story-type-filters {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.type-pill {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--accent);
+}
+.type-pill.topic { color: var(--amber); border-color: rgba(240, 166, 60, 0.4); }
+.type-pill.place_project { color: var(--teal); border-color: rgba(121, 199, 180, 0.4); }
+.type-pill.custom { color: var(--coral); border-color: rgba(229, 107, 80, 0.4); }
+
+/* Progress Timeline (place_project) */
+.project-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  position: relative;
+  padding-left: 1.5rem;
+  border-left: 2px solid var(--line);
+  margin-left: 0.5rem;
+}
+.progress-timeline-item {
+  position: relative;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem;
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+.progress-timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -1.95rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel);
+}
+.progress-thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* ── Suggestions Inbox (Phase 1.5A) ───────────────────────── */
+.suggestions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  max-width: 760px;
+}
+.suggestion-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  transition: border-color 0.15s;
+}
+.suggestion-card:hover {
+  border-color: var(--accent);
+}
+.suggestion-icon {
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  background: var(--panel2);
+  flex-shrink: 0;
+}
+.suggestion-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.suggestion-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.suggestion-reason {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.suggestion-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.badge-count {
+  background: var(--coral);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  border-radius: 10px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
 /* ── Responsive Mobile ────────────────────────────────────── */
 @media (max-width: 390px) {
   .app-header { padding: 0.5rem 0.6rem; flex-wrap: wrap; }
