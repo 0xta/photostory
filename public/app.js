@@ -33,6 +33,14 @@ let activePhotoIndex = -1;
 let currentEventDetail = null;
 let currentFriendDetail = null;
 
+// Map state (Phase 1E: Leaflet GPS Explorer)
+let mapInstance = null;
+let mapMarkersLayer = null;
+let mapRadiusCircle = null;
+let currentMapMode = 'photos'; // 'photos' | 'events'
+let mapData = null;
+let selectedMapCoord = null;
+
 // Filter state for Photos tab (FR-601)
 const photoFilters = {
   cat: '',
@@ -214,6 +222,12 @@ function switchTab(tabName) {
   if (tabName === 'events') loadEvents();
   if (tabName === 'photos') loadPhotos();
   if (tabName === 'friends') loadFriends();
+  if (tabName === 'map') {
+    loadMap(true);
+    setTimeout(() => {
+      if (mapInstance) mapInstance.invalidateSize();
+    }, 150);
+  }
 }
 
 // ── Status Bar Update ────────────────────────────────────────
@@ -591,14 +605,18 @@ async function loadFriends() {
     const res = await api('/persons');
     allFriends = res.items;
 
-    // Update filter dropdown
+    // Update filter dropdowns (Photos tab & Map tab)
     const select = document.getElementById('filter-friend');
-    select.innerHTML = '<option value="">ทั้งหมด</option>';
+    const mapSelect = document.getElementById('map-filter-friend');
+    if (select) select.innerHTML = '<option value="">ทั้งหมด</option>';
+    if (mapSelect) mapSelect.innerHTML = '<option value="">ทั้งหมด</option>';
+
     allFriends.forEach((f) => {
       const opt = document.createElement('option');
       opt.value = f.id;
       opt.textContent = `${f.name} ${f.nick ? `(${f.nick})` : ''}`;
-      select.appendChild(opt);
+      if (select) select.appendChild(opt);
+      if (mapSelect) mapSelect.appendChild(opt.cloneNode(true));
     });
 
     const container = document.getElementById('friends-list');
@@ -727,6 +745,225 @@ function openAddFriendModal() {
 
   document.getElementById('modal-add-friend').style.display = 'flex';
 }
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ── Map View (Phase 1E: Leaflet.js GPS Explorer) ─────────────
+function initMap() {
+  if (mapInstance) return;
+  const container = document.getElementById('map-container');
+  if (!container) return;
+
+  if (typeof L === 'undefined') {
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);text-align:center;padding:2rem;">
+        <div>
+          <div style="font-size:2rem;margin-bottom:0.5rem;">🗺️</div>
+          <p><strong>ไม่สามารถโหลดระบบแผนที่ Leaflet ได้</strong></p>
+          <p style="font-size:0.8rem;margin-top:0.3rem;">กรุณาเชื่อมต่ออินเทอร์เน็ตเพื่อโหลดแผนที่ OpenStreetMap ในการใช้งานครั้งแรก</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  mapInstance = L.map('map-container').setView([13.7563, 100.5018], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(mapInstance);
+
+  mapMarkersLayer = L.layerGroup().addTo(mapInstance);
+
+  mapInstance.on('click', (e) => {
+    findNearbyPhotos(e.latlng.lat, e.latlng.lng);
+  });
+}
+
+async function loadMap(fit = false) {
+  initMap();
+  if (!mapInstance) return;
+
+  const cat = document.getElementById('map-filter-cat')?.value || '';
+  const person = document.getElementById('map-filter-friend')?.value || '';
+  const params = new URLSearchParams();
+  if (cat) params.set('cat', cat);
+  if (person) params.set('person', person);
+
+  try {
+    const res = await api('/photos/geo?' + params.toString());
+    mapData = res;
+
+    const statsEl = document.getElementById('map-stats-count');
+    if (statsEl) {
+      statsEl.textContent = `${res.features.length} รูป · ${res.events.length} เหตุการณ์`;
+    }
+
+    renderMapMarkers(fit);
+  } catch {
+    showToast('ไม่สามารถดึงข้อมูลพิกัดภาพถ่ายได้', 'error');
+  }
+}
+
+function renderMapMarkers(fit = false) {
+  if (!mapInstance || !mapMarkersLayer || !mapData) return;
+  mapMarkersLayer.clearLayers();
+
+  if (currentMapMode === 'photos') {
+    mapData.features.forEach((f) => {
+      const [lon, lat] = f.geometry.coordinates;
+      const icon = L.divIcon({
+        className: 'custom-map-icon',
+        html: `<div class="map-photo-pin" title="${escapeHtml(f.properties.filename)}"><img src="/api/thumbs/${f.properties.id}" alt="" /></div>`,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19],
+        popupAnchor: [0, -20],
+      });
+
+      const marker = L.marker([lat, lon], { icon });
+      const catsHtml = (f.properties.cats || [])
+        .map((c) => `<span class="cat-chip active" style="font-size:0.68rem;padding:1px 6px;">${escapeHtml(c)}</span>`)
+        .join(' ');
+
+      const popupContent = `
+        <div class="map-popup-card">
+          <img src="/api/thumbs/${f.properties.id}" alt="${escapeHtml(f.properties.filename)}" />
+          <div class="map-popup-title">${escapeHtml(f.properties.filename)}</div>
+          <div class="map-popup-meta">
+            <div>📅 ${formatThaiDate(f.properties.taken_at)} ${formatTime(f.properties.taken_at)}</div>
+            ${f.properties.event_name ? `<div>🎞️ ${escapeHtml(f.properties.event_name)}</div>` : ''}
+            ${catsHtml ? `<div style="margin-top:4px;">${catsHtml}</div>` : ''}
+          </div>
+          <div style="display:flex; gap:0.4rem;">
+            <button class="btn btn-sm btn-primary" onclick="openPhotoModal('${f.properties.id}')" style="flex:1;">🔍 ดูรูปใหญ่</button>
+            <button class="btn btn-sm" onclick="findNearbyPhotos(${lat}, ${lon})" title="ค้นหารูปใกล้จุดนี้">📍 ใกล้เคียง</button>
+          </div>
+        </div>
+      `;
+      marker.bindPopup(popupContent);
+      mapMarkersLayer.addLayer(marker);
+    });
+  } else {
+    mapData.events.forEach((e) => {
+      if (e.lat == null || e.lon == null) return;
+      const icon = L.divIcon({
+        className: 'custom-map-icon',
+        html: `<div class="map-event-pin">🎞️ ${escapeHtml(e.name || 'เหตุการณ์')} (${e.photo_count})</div>`,
+        iconSize: ['auto', 'auto'],
+        iconAnchor: [20, 10],
+        popupAnchor: [0, -10],
+      });
+
+      const marker = L.marker([e.lat, e.lon], { icon });
+      const popupContent = `
+        <div class="map-popup-card">
+          <div class="map-popup-title">🎞️ ${escapeHtml(e.name || 'เหตุการณ์')}</div>
+          <div class="map-popup-meta">
+            <div>📍 ${escapeHtml(e.place || formatGps(e.lat, e.lon))}</div>
+            <div>📅 ${formatThaiDate(e.ts_start)}</div>
+            <div>📸 ${e.photo_count} รูปภาพ</div>
+          </div>
+          <div style="display:flex; gap:0.4rem;">
+            <button class="btn btn-sm btn-primary" onclick="openEventDetail('${e.id}')" style="flex:1;">ดูรายละเอียด</button>
+            <button class="btn btn-sm" onclick="findNearbyPhotos(${e.lat}, ${e.lon})" title="ค้นหารูปใกล้จุดนี้">📍 ใกล้เคียง</button>
+          </div>
+        </div>
+      `;
+      marker.bindPopup(popupContent);
+      mapMarkersLayer.addLayer(marker);
+    });
+  }
+
+  const layers = mapMarkersLayer.getLayers();
+  if (fit && layers.length > 0) {
+    const group = L.featureGroup(layers);
+    mapInstance.fitBounds(group.getBounds().pad(0.12));
+  }
+}
+
+async function findNearbyPhotos(lat, lon) {
+  if (!mapInstance) return;
+  selectedMapCoord = { lat, lng: lon };
+  const radius = parseFloat(document.getElementById('map-radius-select')?.value || '2');
+
+  const labelEl = document.getElementById('nearby-radius-label');
+  if (labelEl) labelEl.textContent = String(radius);
+
+  if (mapRadiusCircle) {
+    mapInstance.removeLayer(mapRadiusCircle);
+  }
+
+  mapRadiusCircle = L.circle([lat, lon], {
+    radius: radius * 1000,
+    color: '#F0A63C',
+    fillColor: '#F0A63C',
+    fillOpacity: 0.15,
+    weight: 2,
+  }).addTo(mapInstance);
+
+  const panel = document.getElementById('map-nearby-panel');
+  const countEl = document.getElementById('nearby-count');
+  const listEl = document.getElementById('nearby-photos-list');
+
+  panel.style.display = 'flex';
+  listEl.innerHTML = '<p class="muted" style="font-size:0.8rem;text-align:center;padding:1rem;">กำลังค้นหารูปภาพ...</p>';
+
+  try {
+    const cat = document.getElementById('map-filter-cat')?.value || '';
+    const person = document.getElementById('map-filter-friend')?.value || '';
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lon),
+      radius_km: String(radius),
+    });
+    if (cat) params.set('cat', cat);
+    if (person) params.set('person', person);
+
+    const res = await api('/photos/geo?' + params.toString());
+    countEl.textContent = `${res.features.length} รูป`;
+
+    if (res.features.length === 0) {
+      listEl.innerHTML = '<p class="muted" style="font-size:0.8rem;text-align:center;padding:1rem;">ไม่พบรูปภาพในรัศมีนี้</p>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    res.features.forEach((f) => {
+      const p = f.properties;
+      const item = document.createElement('div');
+      item.className = 'nearby-item';
+      const distText = p.distance_km < 1
+        ? `${Math.round(p.distance_km * 1000)} ม.`
+        : `${p.distance_km} กม.`;
+
+      item.innerHTML = `
+        <img src="/api/thumbs/${p.id}" class="nearby-thumb" alt="" />
+        <div class="nearby-meta">
+          <span class="filename" title="${escapeHtml(p.filename)}">${escapeHtml(p.filename)}</span>
+          <span class="muted" style="font-size:0.72rem;">${formatThaiDateShort(p.taken_at)} · ${formatTime(p.taken_at)}</span>
+          <span class="dist-badge">ห่าง ${distText}</span>
+        </div>
+      `;
+      item.addEventListener('click', () => openPhotoModal(p.id));
+      listEl.appendChild(item);
+    });
+  } catch {
+    listEl.innerHTML = '<p class="muted" style="font-size:0.8rem;text-align:center;padding:1rem;">เกิดข้อผิดพลาดในการค้นหา</p>';
+  }
+}
+
+// Global exposure for Leaflet popup handlers
+window.openPhotoModal = openPhotoModal;
+window.openEventDetail = openEventDetail;
+window.findNearbyPhotos = findNearbyPhotos;
 
 // ── Modals Close & Keyboard Navigation (FR-402, AC-15) ────────
 function closeAllModals() {
@@ -1018,6 +1255,42 @@ async function init() {
     } catch {
       showToast('ไม่สามารถจัดกลุ่มใหม่ได้', 'error');
     }
+  });
+
+  // Map toolbar controls (Phase 1E)
+  document.getElementById('btn-map-mode-photos')?.addEventListener('click', () => {
+    currentMapMode = 'photos';
+    document.getElementById('btn-map-mode-photos')?.classList.add('active');
+    document.getElementById('btn-map-mode-events')?.classList.remove('active');
+    renderMapMarkers();
+  });
+  document.getElementById('btn-map-mode-events')?.addEventListener('click', () => {
+    currentMapMode = 'events';
+    document.getElementById('btn-map-mode-events')?.classList.add('active');
+    document.getElementById('btn-map-mode-photos')?.classList.remove('active');
+    renderMapMarkers();
+  });
+  document.getElementById('map-filter-cat')?.addEventListener('change', () => loadMap());
+  document.getElementById('map-filter-friend')?.addEventListener('change', () => loadMap());
+  document.getElementById('map-radius-select')?.addEventListener('change', () => {
+    if (selectedMapCoord) {
+      findNearbyPhotos(selectedMapCoord.lat, selectedMapCoord.lng);
+    }
+  });
+  document.getElementById('btn-map-fit-bounds')?.addEventListener('click', () => {
+    if (mapInstance && mapMarkersLayer && mapMarkersLayer.getLayers().length > 0) {
+      const group = L.featureGroup(mapMarkersLayer.getLayers());
+      mapInstance.fitBounds(group.getBounds().pad(0.12));
+    }
+  });
+  document.getElementById('btn-close-nearby')?.addEventListener('click', () => {
+    const panel = document.getElementById('map-nearby-panel');
+    if (panel) panel.style.display = 'none';
+    if (mapRadiusCircle && mapInstance) {
+      mapInstance.removeLayer(mapRadiusCircle);
+      mapRadiusCircle = null;
+    }
+    selectedMapCoord = null;
   });
 
   // Initial load

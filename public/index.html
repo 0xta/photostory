@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -235,10 +236,74 @@
       <div class="friends-grid" id="friends-list"></div>
     </section>
 
-    <!-- ── Map View (Phase 1E placeholder) ── -->
+    <!-- ── Map View (Phase 1E: Leaflet.js GPS Explorer) ── -->
     <section id="view-map" class="view">
-      <h2 class="view-title">แผนที่พิกัดภาพถ่าย</h2>
-      <p class="muted">Phase 1E จะเชื่อมต่อแผนที่ Leaflet.js</p>
+      <div class="map-toolbar card">
+        <div class="map-toolbar-row">
+          <div class="map-mode-toggle">
+            <button class="btn btn-sm active" id="btn-map-mode-photos" title="แสดงภาพถ่ายแต่ละใบ">📍 รูปภาพ</button>
+            <button class="btn btn-sm" id="btn-map-mode-events" title="แสดงกลุ่มเหตุการณ์">🎞️ เหตุการณ์</button>
+          </div>
+
+          <div class="filter-item">
+            <label class="filter-label" for="map-filter-cat">หมวดหมู่:</label>
+            <select id="map-filter-cat" class="input input-sm">
+              <option value="">ทุกหมวด</option>
+              <option value="อาหาร">อาหาร</option>
+              <option value="บรรยากาศ">บรรยากาศ</option>
+              <option value="สไลด์">สไลด์</option>
+              <option value="ตัวฉัน">ตัวฉัน</option>
+              <option value="เพื่อน">เพื่อน</option>
+              <option value="สถาปัตยกรรม">สถาปัตยกรรม</option>
+              <option value="อื่นๆ">อื่นๆ</option>
+            </select>
+          </div>
+
+          <div class="filter-item">
+            <label class="filter-label" for="map-filter-friend">เพื่อน:</label>
+            <select id="map-filter-friend" class="input input-sm">
+              <option value="">ทั้งหมด</option>
+            </select>
+          </div>
+
+          <div class="filter-item">
+            <label class="filter-label" for="map-radius-select">รัศมีใกล้เคียง:</label>
+            <select id="map-radius-select" class="input input-sm">
+              <option value="1">1 กม.</option>
+              <option value="2" selected>2 กม.</option>
+              <option value="5">5 กม.</option>
+              <option value="10">10 กม.</option>
+              <option value="25">25 กม.</option>
+            </select>
+          </div>
+
+          <div style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+            <span class="muted mono" id="map-stats-count" style="font-size: 0.82rem;">0 จุดพิกัด</span>
+            <button class="btn btn-sm" id="btn-map-fit-bounds" title="ซูมให้เห็นทุกจุด">🔍 ซูมรวม</button>
+          </div>
+        </div>
+        <div class="map-hint-row muted" style="font-size: 0.76rem; margin-top: 0.35rem;">
+          💡 คลิกที่จุดบนแผนที่ หรือคลิกพื้นที่ว่างเพื่อค้นหา "รูปภาพที่อยู่ใกล้เคียง" ภายในรัศมี
+        </div>
+      </div>
+
+      <div class="map-layout">
+        <div id="map-container" class="map-box">
+          <!-- Leaflet Map rendered here -->
+        </div>
+
+        <!-- Nearby photos sidebar panel -->
+        <aside id="map-nearby-panel" class="nearby-panel card" style="display: none;">
+          <div class="nearby-header">
+            <div class="nearby-title-row">
+              <h4 class="nearby-title">📍 รูปในรัศมี <span id="nearby-radius-label">2</span> กม.</h4>
+              <span class="mono muted" id="nearby-count" style="font-size: 0.8rem;">0 รูป</span>
+            </div>
+            <button class="btn-close" id="btn-close-nearby" title="ปิด">&times;</button>
+          </div>
+          <div class="nearby-photos-list" id="nearby-photos-list"></div>
+        </aside>
+      </div>
     </section>
   </main>
 
@@ -525,6 +590,7 @@
     <span id="status-counts" class="mono"></span>
   </footer>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -4,6 +4,19 @@ import path from 'node:path';
 import { FastifyPluginAsync } from 'fastify';
 import db, { THUMBS_DIR, ftsUpsert, ftsDelete } from '../db.js';
 import { runClustering } from '../workers/cluster.js';
+import { haversine } from '../utils.js';
+
+interface GeoQuery {
+  cat?: string;
+  person?: string;
+  month?: string;
+  year?: string;
+  event?: string;
+  q?: string;
+  lat?: string;
+  lon?: string;
+  radius_km?: string;
+}
 
 interface PhotosQuery {
   cat?: string;
@@ -120,6 +133,142 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return { total: countRow.c, items };
+  });
+
+  // GET /api/photos/geo (GeoJSON FeatureCollection + Events + Nearby query)
+  app.get<{ Querystring: GeoQuery }>('/api/photos/geo', async (req) => {
+    const { cat, person, month, year, event, q, lat, lon, radius_km } = req.query;
+
+    const conditions: string[] = ['p.lat IS NOT NULL', 'p.lon IS NOT NULL'];
+    const params: any[] = [];
+
+    if (cat) {
+      conditions.push('p.id IN (SELECT photo_id FROM photo_cats WHERE cat = ?)');
+      params.push(cat);
+    }
+    if (person) {
+      conditions.push('p.id IN (SELECT photo_id FROM photo_persons WHERE person_id = ?)');
+      params.push(person);
+    }
+    if (month) {
+      conditions.push(
+        'p.taken_at IS NOT NULL AND CAST(strftime(\'%m\', datetime(p.taken_at / 1000, \'unixepoch\')) AS INTEGER) = ?'
+      );
+      params.push(parseInt(month, 10));
+    }
+    if (year) {
+      conditions.push(
+        'p.taken_at IS NOT NULL AND CAST(strftime(\'%Y\', datetime(p.taken_at / 1000, \'unixepoch\')) AS INTEGER) = ?'
+      );
+      params.push(parseInt(year, 10));
+    }
+    if (event) {
+      conditions.push('p.event_id = ?');
+      params.push(event);
+    }
+    if (q && q.trim().length >= 3) {
+      conditions.push(
+        'p.id IN (SELECT ref_id FROM search_fts WHERE kind = \'photo\' AND search_fts MATCH ?)'
+      );
+      params.push(q.trim());
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    const rows = db
+      .prepare(`
+        SELECT
+          p.id, p.filename, p.taken_at, p.lat, p.lon, p.burst, p.note, p.event_id,
+          e.name as event_name, e.place as event_place
+        FROM photos p
+        LEFT JOIN events e ON p.event_id = e.id
+        ${whereClause}
+        ORDER BY p.taken_at ASC
+      `)
+      .all(...params) as any[];
+
+    // Fetch tags for these photos efficiently
+    const catsRows = db
+      .prepare('SELECT photo_id, cat FROM photo_cats')
+      .all() as { photo_id: string; cat: string }[];
+    const catsMap: Record<string, string[]> = {};
+    for (const r of catsRows) {
+      if (!catsMap[r.photo_id]) catsMap[r.photo_id] = [];
+      catsMap[r.photo_id].push(r.cat);
+    }
+
+    const personsRows = db
+      .prepare(`
+        SELECT pp.photo_id, pe.id, pe.name, pe.color
+        FROM photo_persons pp
+        JOIN persons pe ON pp.person_id = pe.id
+      `)
+      .all() as { photo_id: string; id: string; name: string; color: string }[];
+    const personsMap: Record<string, any[]> = {};
+    for (const r of personsRows) {
+      if (!personsMap[r.photo_id]) personsMap[r.photo_id] = [];
+      personsMap[r.photo_id].push({ id: r.id, name: r.name, color: r.color });
+    }
+
+    const queryLat = lat ? parseFloat(lat) : null;
+    const queryLon = lon ? parseFloat(lon) : null;
+    const maxRadius = radius_km ? parseFloat(radius_km) : null;
+
+    let features = rows.map((p) => {
+      let distanceKm: number | null = null;
+      if (queryLat !== null && queryLon !== null && !isNaN(queryLat) && !isNaN(queryLon)) {
+        distanceKm = haversine({ lat: queryLat, lon: queryLon }, { lat: p.lat, lon: p.lon });
+      }
+
+      return {
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [p.lon, p.lat],
+        },
+        properties: {
+          id: p.id,
+          filename: p.filename,
+          taken_at: p.taken_at,
+          event_id: p.event_id,
+          event_name: p.event_name,
+          event_place: p.event_place,
+          burst: p.burst,
+          note: p.note,
+          cats: catsMap[p.id] || [],
+          persons: personsMap[p.id] || [],
+          distance_km: distanceKm !== null ? Math.round(distanceKm * 100) / 100 : undefined,
+        },
+      };
+    });
+
+    if (maxRadius !== null && !isNaN(maxRadius) && queryLat !== null && queryLon !== null) {
+      features = features.filter(
+        (f) => f.properties.distance_km !== undefined && f.properties.distance_km <= maxRadius
+      );
+      features.sort(
+        (a, b) => (a.properties.distance_km ?? 0) - (b.properties.distance_km ?? 0)
+      );
+    }
+
+    // Also fetch distinct events with centroids
+    const events = db
+      .prepare(`
+        SELECT
+          e.id, e.name, e.place, e.lat, e.lon, e.ts_start, e.ts_end,
+          (SELECT COUNT(*) FROM photos WHERE event_id = e.id) as photo_count
+        FROM events e
+        WHERE e.lat IS NOT NULL AND e.lon IS NOT NULL
+        ORDER BY e.ts_start ASC
+      `)
+      .all() as any[];
+
+    return {
+      type: 'FeatureCollection',
+      features,
+      events,
+      total: features.length,
+    };
   });
 
   // GET /api/photos/:id
