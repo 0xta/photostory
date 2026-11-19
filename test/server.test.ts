@@ -1,4 +1,5 @@
 // test/server.test.ts — HTTP integration test
+process.env.NODE_ENV = 'test';
 import assert from 'node:assert/strict';
 import app from '../server/index.js';
 

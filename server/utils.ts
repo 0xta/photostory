@@ -78,6 +78,41 @@ export function autoEventName(index: number, tsStart: number): string {
 }
 
 /**
+ * Parse date from filename fallback (e.g. 2026-03-14, 20260314)
+ */
+export function parseDateFromFilename(filename: string): number | null {
+  const m1 = filename.match(/\b(20\d{2})[-_.](0[1-9]|1[0-2])[-_.](0[1-9]|[12]\d|3[01])\b/);
+  if (m1) {
+    const year = parseInt(m1[1], 10);
+    const month = parseInt(m1[2], 10) - 1;
+    const day = parseInt(m1[3], 10);
+    return new Date(Date.UTC(year, month, day, 12, 0, 0)).getTime();
+  }
+  const m2 = filename.match(/\b(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b/);
+  if (m2) {
+    const year = parseInt(m2[1], 10);
+    const month = parseInt(m2[2], 10) - 1;
+    const day = parseInt(m2[3], 10);
+    return new Date(Date.UTC(year, month, day, 12, 0, 0)).getTime();
+  }
+  return null;
+}
+
+/**
+ * Hamming distance between two hex hashes (pHash)
+ */
+export function hammingDistance(hexA: string, hexB: string): number {
+  if (!hexA || !hexB) return Infinity;
+  let dist = 0;
+  const len = Math.min(hexA.length, hexB.length);
+  for (let i = 0; i < len; i++) {
+    const val = parseInt(hexA[i], 16) ^ parseInt(hexB[i], 16);
+    dist += (val & 1) + ((val >> 1) & 1) + ((val >> 2) & 1) + ((val >> 3) & 1);
+  }
+  return dist + Math.abs(hexA.length - hexB.length) * 4;
+}
+
+/**
  * Category definitions (7 fixed)
  */
 export const CATEGORIES = [

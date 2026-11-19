@@ -6,11 +6,17 @@ import { fileURLToPath } from 'node:url';
 
 // Import DB to ensure schema is initialized on startup
 import db, { getAllSettings, setSetting } from './db.js';
+import { jobsRoutes } from './routes/jobs.js';
+import { importRoutes } from './routes/import.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: process.env.NODE_ENV === 'test' ? false : true });
+
+// ── Register routes ─────────────────────────────────────────────
+app.register(jobsRoutes);
+app.register(importRoutes);
 
 // ── Serve static frontend ───────────────────────────────────────
 app.register(fastifyStatic, {
@@ -65,6 +71,8 @@ const start = async () => {
   }
 };
 
-start();
+if (process.env.NODE_ENV !== 'test') {
+  start();
+}
 
 export default app;
