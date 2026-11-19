@@ -13,7 +13,10 @@ console.log('========================================================\n');
 
 for (const file of testFiles) {
   console.log(`\n▶ Running ${file}...`);
-  execSync(`npx tsx ${file}`, { stdio: 'inherit' });
+  execSync(`npx tsx ${file}`, {
+    stdio: 'inherit',
+    env: { ...process.env, NODE_ENV: 'test' },
+  });
 }
 
 console.log('\n========================================================');

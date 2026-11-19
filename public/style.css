@@ -324,3 +324,270 @@ body {
   .empty-state { padding: 2rem 1rem; }
   .empty-state h2 { font-size: 1.2rem; }
 }
+
+/* ── Additional components ────────────────────────────────── */
+.btn-sm {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 1.5rem 0 1rem;
+}
+.section-header .view-title {
+  margin-bottom: 0;
+}
+
+/* ── Stats Grid ───────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem;
+  box-shadow: 0 2px 6px var(--shadow);
+}
+.stat-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+.stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* ── Events Grid & Contact Sheet Card ─────────────────────── */
+.events-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.event-card {
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.event-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px var(--shadow);
+}
+
+.event-header {
+  padding: 0.8rem 1rem 0.4rem;
+  border-bottom: 1px dashed var(--line);
+}
+.event-name {
+  font-family: 'Chakra Petch', sans-serif;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--ink);
+  margin-bottom: 0.2rem;
+}
+.event-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+  display: flex;
+  gap: 0.5rem;
+}
+
+.film-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 0.5rem;
+  background: #0b0d12;
+}
+.film-thumb {
+  aspect-ratio: 1;
+  background: var(--panel2);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.film-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.event-footer {
+  padding: 0.5rem 1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ── Photos Grid ──────────────────────────────────────────── */
+.photos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.6rem;
+}
+.photo-card {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.photo-card:hover {
+  transform: scale(1.03);
+}
+.photo-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.burst-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(240, 166, 60, 0.85);
+  color: #12151C;
+  font-size: 0.65rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+/* ── Modals & Overlay ─────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 10px 30px var(--shadow);
+  overflow: hidden;
+  animation: modalIn 0.25s ease-out;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+.modal-title {
+  font-family: 'Chakra Petch', sans-serif;
+  font-weight: 600;
+  font-size: 1.15rem;
+}
+.btn-close {
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+}
+.btn-close:hover { color: var(--ink); }
+
+.modal-body {
+  padding: 1.25rem;
+}
+.form-group {
+  margin-bottom: 0.8rem;
+}
+.form-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.8rem 1.25rem;
+  border-top: 1px solid var(--line);
+  background: var(--panel2);
+}
+
+/* ── Progress Card ────────────────────────────────────────── */
+.progress-card {
+  text-align: center;
+  padding: 2rem 1.5rem;
+}
+.progress-spinner {
+  font-size: 2.8rem;
+  margin-bottom: 0.6rem;
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background: var(--panel2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 1.2rem 0 0.8rem;
+  border: 1px solid var(--line);
+}
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.progress-status {
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 1rem;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-around;
+  font-size: 0.82rem;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 0.8rem;
+}
+.progress-stats strong {
+  color: var(--ink);
+}

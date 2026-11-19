@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import db, { getAllSettings, setSetting } from './db.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { importRoutes } from './routes/import.js';
+import { eventsRoutes } from './routes/events.js';
+import { photosRoutes } from './routes/photos.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -17,6 +19,8 @@ const app = Fastify({ logger: process.env.NODE_ENV === 'test' ? false : true });
 // ── Register routes ─────────────────────────────────────────────
 app.register(jobsRoutes);
 app.register(importRoutes);
+app.register(eventsRoutes);
+app.register(photosRoutes);
 
 // ── Serve static frontend ───────────────────────────────────────
 app.register(fastifyStatic, {
@@ -71,7 +75,11 @@ const start = async () => {
   }
 };
 
-if (process.env.NODE_ENV !== 'test') {
+const isMain =
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+
+if (isMain && process.env.NODE_ENV !== 'test') {
   start();
 }
 

@@ -16,6 +16,7 @@
       <h1 class="app-title">🎞️ เรื่องราว <span class="year">2026</span></h1>
     </div>
     <div class="header-right">
+      <button class="btn btn-primary btn-sm" id="btn-header-import">+ นำเข้ารูป</button>
       <div class="theme-switcher">
         <button class="theme-btn" data-theme="light" title="สว่าง">☀️</button>
         <button class="theme-btn" data-theme="warm" title="อบอุ่น">🕯️</button>
@@ -43,40 +44,124 @@
   <main class="main-content">
     <!-- Dashboard view -->
     <section id="view-dashboard" class="view active">
-      <div class="empty-state">
+      <div id="dashboard-empty" class="empty-state">
         <div class="empty-icon">🎞️</div>
         <h2>เริ่มบันทึกเรื่องราวของคุณ</h2>
         <p>นำเข้ารูปจากมือถือหรือโฟลเดอร์ — ระบบจะอ่านวันที่และ GPS จากไฟล์ แล้วจัดกลุ่มเป็นเหตุการณ์ให้อัตโนมัติ ทุกอย่างประมวลผลในเครื่องคุณ ไม่มีการอัปโหลด ไม่ใช้ AI API</p>
         <div class="empty-actions">
-          <button class="btn btn-primary" id="btn-import">+ นำเข้ารูป</button>
+          <button class="btn btn-primary btn-open-import">+ นำเข้ารูป</button>
+          <button class="btn" id="btn-quick-fixtures">ลองด้วยข้อมูลตัวอย่าง</button>
         </div>
+      </div>
+
+      <div id="dashboard-content" style="display: none;">
+        <!-- Stats cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">รูปภาพทั้งหมด</div>
+            <div class="stat-value mono" id="stat-photos">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">เหตุการณ์ (จัดอัตโนมัติ)</div>
+            <div class="stat-value mono" id="stat-events">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">เพื่อนที่บันทึก</div>
+            <div class="stat-value mono" id="stat-friends">0</div>
+          </div>
+        </div>
+
+        <div class="section-header">
+          <h2 class="view-title">เหตุการณ์ล่าสุด</h2>
+          <button class="btn btn-sm" onclick="switchTab('events')">ดูทั้งหมด →</button>
+        </div>
+        <div class="events-grid" id="dashboard-events"></div>
       </div>
     </section>
 
     <!-- Events view -->
     <section id="view-events" class="view">
-      <h2 class="view-title">เหตุการณ์</h2>
-      <p class="muted">Phase 1B จะเพิ่มการจัดกลุ่มอัตโนมัติ</p>
+      <div class="section-header">
+        <h2 class="view-title">เหตุการณ์ทั้งหมด</h2>
+        <button class="btn btn-sm" id="btn-recluster">🔄 จัดกลุ่มใหม่</button>
+      </div>
+      <div class="events-grid" id="events-list"></div>
     </section>
 
     <!-- Photos view -->
     <section id="view-photos" class="view">
-      <h2 class="view-title">รูปทั้งหมด</h2>
-      <p class="muted">Phase 1C จะเพิ่มการแสดงรูปและ filter</p>
+      <div class="section-header">
+        <h2 class="view-title">รูปทั้งหมด</h2>
+        <span class="muted mono" id="photos-count-label"></span>
+      </div>
+      <div class="photos-grid" id="photos-list"></div>
     </section>
 
     <!-- Friends view -->
     <section id="view-friends" class="view">
       <h2 class="view-title">เพื่อน</h2>
-      <p class="muted">Phase 1C จะเพิ่มการจัดการเพื่อน</p>
+      <p class="muted">Phase 1C จะเพิ่มระบบบันทึกโปรไฟล์เพื่อนและสถิติการเจอกัน</p>
     </section>
 
     <!-- Map view -->
     <section id="view-map" class="view">
       <h2 class="view-title">แผนที่</h2>
-      <p class="muted">Phase 1E จะเพิ่มแผนที่ GPS</p>
+      <p class="muted">Phase 1E จะเพิ่มแผนที่พิกัด GPS</p>
     </section>
   </main>
+
+  <!-- ── Modal: นำเข้ารูป ──────────────────────────────────── -->
+  <div id="modal-import" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">📂 นำเข้ารูปภาพ</h3>
+        <button class="btn-close" id="btn-close-import">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted" style="margin-bottom: 0.8rem; font-size: 0.9rem;">
+          ระบุที่อยู่โฟลเดอร์ในเครื่องของคุณ (Scan-in-place ไม่คัดลอก ไม่แก้ไขไฟล์ต้นฉบับ)
+        </p>
+        <div class="form-group">
+          <label for="import-folder-path" class="form-label">ที่อยู่โฟลเดอร์ (Folder Path)</label>
+          <input
+            type="text"
+            id="import-folder-path"
+            class="input mono"
+            placeholder="เช่น D:\photos หรือ test/fixtures/photos"
+          />
+        </div>
+        <div style="margin-top: 0.6rem;">
+          <button class="btn btn-sm" id="btn-fill-fixtures">✨ ใช้โฟลเดอร์ตัวอย่าง (test/fixtures/photos)</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-cancel-import">ยกเลิก</button>
+        <button class="btn btn-primary" id="btn-start-import">🚀 เริ่มนำเข้า</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Progress Overlay: กำลังอ่านฟิล์ม… ────────────────── -->
+  <div id="overlay-progress" class="modal-backdrop" style="display: none;">
+    <div class="modal-card progress-card">
+      <div class="progress-header">
+        <div class="progress-spinner">🎞️</div>
+        <h3>กำลังอ่านฟิล์ม…</h3>
+        <p class="muted" style="font-size: 0.82rem; margin-top: 0.2rem;">
+          อ่านวันที่ + GPS จาก EXIF ในเครื่องของคุณ ไม่มีการอัปโหลด
+        </p>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-bar-fill" id="progress-fill" style="width: 0%;"></div>
+      </div>
+      <div class="progress-status mono" id="progress-status">กำลังเตรียมการ...</div>
+      <div class="progress-stats">
+        <span>เพิ่มแล้ว: <strong id="prog-added" class="mono">0</strong></span>
+        <span>ข้ามรูปซ้ำ: <strong id="prog-skipped" class="mono">0</strong></span>
+        <span>ไม่มีวันที่: <strong id="prog-dateless" class="mono">0</strong></span>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Status bar ───────────────────────────────────────── -->
   <footer class="status-bar">
