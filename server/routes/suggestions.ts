@@ -81,12 +81,13 @@ export const suggestionsRoutes: FastifyPluginAsync = async (app) => {
     const now = Date.now();
 
     const applyAction = db.transaction(() => {
-      if (sugg.kind === 'collection_topic' && payload.collection_id && payload.photo_id) {
-        // Add to collection with added_by='rule' (AC-21)
+      if ((sugg.kind === 'collection_topic' || sugg.kind === 'collection_semantic') && payload.collection_id && payload.photo_id) {
+        // Add to collection with added_by='rule' or 'semantic' (AC-21 / Algorithm 8.9)
+        const addedBy = sugg.kind === 'collection_semantic' ? 'semantic' : 'rule';
         db.prepare(`
           INSERT OR IGNORE INTO collection_photos (collection_id, photo_id, added_by, added_at)
-          VALUES (?, ?, 'rule', ?)
-        `).run(payload.collection_id, payload.photo_id, now);
+          VALUES (?, ?, ?, ?)
+        `).run(payload.collection_id, payload.photo_id, addedBy, now);
       } else if (sugg.kind === 'collection_create' && payload.suggested_name) {
         // Create new collection
         const newCollId = genId();

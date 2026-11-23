@@ -503,6 +503,10 @@ function createPhotoThumbCard(photo) {
   card.title = `${photo.filename} (${formatThaiDate(photo.taken_at)})`;
 
   const burstBadge = photo.burst ? '<span class="burst-badge">⚡ รัว</span>' : '';
+  const semBadge =
+    (photo.match_type === 'semantic' || photo.match_type === 'hybrid') && photo.score
+      ? `<span class="burst-badge" style="background: rgba(16, 185, 129, 0.9); right: auto; left: 4px;">✨ ${Math.round(photo.score * 100)}%</span>`
+      : '';
 
   // Dots for categories and friends
   let dotsHtml = '<div class="photo-dots-overlay">';
@@ -517,6 +521,7 @@ function createPhotoThumbCard(photo) {
   card.innerHTML = `
     <img src="/api/thumbs/${photo.id}" loading="lazy" alt="${photo.filename}" />
     ${burstBadge}
+    ${semBadge}
     ${dotsHtml}
   `;
   return card;
@@ -1252,7 +1257,16 @@ async function loadSuggestions() {
       card.className = 'suggestion-card';
 
       const p = s.payload || {};
-      const icon = s.kind === 'collection_create' ? '✨' : s.kind === 'meal' ? '🍽️' : s.kind === 'place_link' ? '📍' : '📌';
+      const icon =
+        s.kind === 'collection_create'
+          ? '✨'
+          : s.kind === 'collection_semantic'
+          ? '🧠'
+          : s.kind === 'meal'
+          ? '🍽️'
+          : s.kind === 'place_link'
+          ? '📍'
+          : '📌';
 
       let photosPreview = '';
       if (s.kind === 'meal' && Array.isArray(p.photo_ids) && p.photo_ids.length > 0) {
@@ -1260,6 +1274,13 @@ async function loadSuggestions() {
           <div style="display: flex; gap: 4px; margin-top: 0.4rem; overflow-x: auto;">
             ${p.photo_ids.slice(0, 4).map((pid) => `<img src="/api/thumbs/${pid}" style="width: 44px; height: 44px; border-radius: 4px; object-fit: cover;" />`).join('')}
             ${p.photo_ids.length > 4 ? `<span class="muted mono" style="align-self: center; font-size: 0.75rem; margin-left: 4px;">+${p.photo_ids.length - 4}</span>` : ''}
+          </div>
+        `;
+      } else if (p.photo_id) {
+        photosPreview = `
+          <div style="display: flex; gap: 8px; margin-top: 0.4rem; align-items: center;">
+            <img src="/api/thumbs/${p.photo_id}" style="width: 44px; height: 44px; border-radius: 4px; object-fit: cover; border: 1px solid var(--line);" />
+            ${p.similarity ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px;">ความคล้าย ${p.similarity}%</span>` : ''}
           </div>
         `;
       }
@@ -1903,6 +1924,38 @@ async function init() {
   // Theme switcher
   document.querySelectorAll('.theme-btn').forEach((btn) => {
     btn.addEventListener('click', () => setTheme(btn.dataset.theme));
+  });
+
+  // ML Semantic Search Toggle Button (Phase 2, FR-603)
+  const mlBtn = document.getElementById('btn-toggle-ml');
+  const mlLabel = document.getElementById('label-ml-status');
+  function updateMlButtonLabel() {
+    const isMl = settings.ml_enabled !== '0';
+    if (mlLabel) mlLabel.textContent = isMl ? 'เปิด' : 'ปิด';
+    if (mlBtn) mlBtn.style.opacity = isMl ? '1' : '0.6';
+  }
+  updateMlButtonLabel();
+
+  mlBtn?.addEventListener('click', async () => {
+    const cur = settings.ml_enabled !== '0';
+    const next = cur ? '0' : '1';
+    try {
+      await api('/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ ml_enabled: next }),
+      });
+      settings.ml_enabled = next;
+      updateMlButtonLabel();
+      showToast(
+        next === '1'
+          ? 'เปิดการค้นหาด้วยความหมาย (Semantic Search) แล้ว'
+          : 'ปิดการค้นหาด้วยความหมาย (ใช้ FTS คีย์เวิร์ดตรงเท่านั้น)',
+        'info'
+      );
+      if (currentTab === 'photos') loadPhotos();
+    } catch {
+      showToast('ไม่สามารถเปลี่ยนการตั้งค่าได้', 'error');
+    }
   });
 
   // Setup Voice Input buttons (Web Speech API th-TH)

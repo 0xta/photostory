@@ -308,6 +308,9 @@ export const backupRoutes: FastifyPluginAsync = async (app) => {
       db.prepare('DELETE FROM events').run();
       db.prepare('DELETE FROM persons').run();
       db.prepare('DELETE FROM search_fts').run();
+      try {
+        db.prepare('DELETE FROM photo_vec').run();
+      } catch {}
     });
 
     clearTx();

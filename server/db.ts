@@ -1,6 +1,7 @@
 // server/db.ts — Database connection, schema, and helpers
 import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
+import * as sqliteVec from 'sqlite-vec';
 import path from 'node:path';
 import fs from 'node:fs';
 import { DEFAULT_SETTINGS } from './utils.js';
@@ -19,6 +20,13 @@ export { DATA_DIR, DB_PATH, THUMBS_DIR, RECAPS_DIR };
 
 // ── Connection ──────────────────────────────────────────────────
 const db: DatabaseType = new Database(DB_PATH);
+
+// Load sqlite-vec extension
+try {
+  sqliteVec.load(db);
+} catch (err) {
+  console.warn('sqlite-vec extension could not be loaded:', err);
+}
 
 // Performance pragmas
 db.pragma('journal_mode = WAL');
@@ -190,6 +198,12 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_suggestions_status ON suggestions(status);
+
+  -- ===== Vector index (Phase 2, sqlite-vec) =====
+  CREATE VIRTUAL TABLE IF NOT EXISTS photo_vec USING vec0(
+    photo_id TEXT PRIMARY KEY,
+    emb FLOAT[512] distance_metric=cosine
+  );
 `);
 
 // ── Seed default settings ───────────────────────────────────────

@@ -5,6 +5,7 @@ import { FastifyPluginAsync } from 'fastify';
 import db, { THUMBS_DIR, ftsUpsert, ftsDelete } from '../db.js';
 import { runClustering } from '../workers/cluster.js';
 import { haversine } from '../utils.js';
+import { embedText, searchSimilarPhotos, isMlEnabled } from '../workers/embed.js';
 
 interface GeoQuery {
   cat?: string;
@@ -93,11 +94,33 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
       params.push(event);
     }
 
-    if (q && q.trim().length >= 3) {
-      conditions.push(
-        'p.id IN (SELECT ref_id FROM search_fts WHERE kind = \'photo\' AND search_fts MATCH ?)'
-      );
-      params.push(q.trim());
+    if (q && q.trim().length >= 2) {
+      const qTrim = q.trim();
+      let semanticIds: string[] = [];
+      if (isMlEnabled()) {
+        try {
+          const queryEmb = await embedText(qTrim);
+          const similar = searchSimilarPhotos(queryEmb, 100, 0.20);
+          semanticIds = similar.map((s) => s.photo_id);
+        } catch {}
+      }
+
+      if (semanticIds.length > 0 && qTrim.length >= 3) {
+        const placeholders = semanticIds.map(() => '?').join(',');
+        conditions.push(
+          `(p.id IN (SELECT ref_id FROM search_fts WHERE kind = 'photo' AND search_fts MATCH ?) OR p.id IN (${placeholders}))`
+        );
+        params.push(qTrim, ...semanticIds);
+      } else if (semanticIds.length > 0) {
+        const placeholders = semanticIds.map(() => '?').join(',');
+        conditions.push(`p.id IN (${placeholders})`);
+        params.push(...semanticIds);
+      } else if (qTrim.length >= 3) {
+        conditions.push(
+          "p.id IN (SELECT ref_id FROM search_fts WHERE kind = 'photo' AND search_fts MATCH ?)"
+        );
+        params.push(qTrim);
+      }
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -166,11 +189,33 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
       conditions.push('p.event_id = ?');
       params.push(event);
     }
-    if (q && q.trim().length >= 3) {
-      conditions.push(
-        'p.id IN (SELECT ref_id FROM search_fts WHERE kind = \'photo\' AND search_fts MATCH ?)'
-      );
-      params.push(q.trim());
+    if (q && q.trim().length >= 2) {
+      const qTrim = q.trim();
+      let semanticIds: string[] = [];
+      if (isMlEnabled()) {
+        try {
+          const queryEmb = await embedText(qTrim);
+          const similar = searchSimilarPhotos(queryEmb, 100, 0.20);
+          semanticIds = similar.map((s) => s.photo_id);
+        } catch {}
+      }
+
+      if (semanticIds.length > 0 && qTrim.length >= 3) {
+        const placeholders = semanticIds.map(() => '?').join(',');
+        conditions.push(
+          `(p.id IN (SELECT ref_id FROM search_fts WHERE kind = 'photo' AND search_fts MATCH ?) OR p.id IN (${placeholders}))`
+        );
+        params.push(qTrim, ...semanticIds);
+      } else if (semanticIds.length > 0) {
+        const placeholders = semanticIds.map(() => '?').join(',');
+        conditions.push(`p.id IN (${placeholders})`);
+        params.push(...semanticIds);
+      } else if (qTrim.length >= 3) {
+        conditions.push(
+          "p.id IN (SELECT ref_id FROM search_fts WHERE kind = 'photo' AND search_fts MATCH ?)"
+        );
+        params.push(qTrim);
+      }
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;

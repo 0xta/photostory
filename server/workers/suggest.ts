@@ -1,7 +1,8 @@
-// server/workers/suggest.ts — Rule-based Suggestion Engine (Phase 1.5, No AI)
+// server/workers/suggest.ts — Rule & Semantic Suggestion Engine (Phase 1.5 & Phase 2)
 import db, { getSetting } from '../db.js';
 import { genId, haversine } from '../utils.js';
 import { guessMealType } from '../routes/meals.js';
+import { isMlEnabled, normalizeVector, EMBED_DIM } from './embed.js';
 
 interface SuggestionRow {
   id: string;
@@ -395,6 +396,89 @@ export function runSuggestionScan(): { added: number } {
 
     insertStmt.run(genId(), 'meal', JSON.stringify(payload), now);
     addedCount++;
+  }
+
+  // ── Rule 5: Semantic Collection Suggestions (Algorithm 8.9 / Phase 2) ─
+  if (isMlEnabled()) {
+    try {
+      const semanticThreshold = Number(getSetting('semantic_coll_cosine') || '0.30');
+      const allTopicCollections = db
+        .prepare("SELECT id, name FROM collections WHERE type = 'topic'")
+        .all() as Array<{ id: string; name: string }>;
+
+      for (const coll of allTopicCollections) {
+        // Fetch embeddings of member photos
+        const memberVecRows = db
+          .prepare(`
+            SELECT pv.emb FROM collection_photos cp
+            JOIN photo_vec pv ON cp.photo_id = pv.photo_id
+            WHERE cp.collection_id = ?
+          `)
+          .all(coll.id) as Array<{ emb: any }>;
+
+        if (memberVecRows.length > 0) {
+          // Compute collection centroid = mean of member photo vectors (normalized)
+          const centroid = new Float32Array(EMBED_DIM);
+          for (const row of memberVecRows) {
+            const v =
+              row.emb instanceof Float32Array
+                ? row.emb
+                : new Float32Array(row.emb.buffer, row.emb.byteOffset, row.emb.byteLength / 4);
+            for (let i = 0; i < EMBED_DIM; i++) {
+              centroid[i] += v[i];
+            }
+          }
+          normalizeVector(centroid);
+
+          // In sqlite-vec, distance = 1 - cosine
+          const maxDistance = 1 - semanticThreshold;
+          const candidates = db
+            .prepare(`
+              SELECT photo_id, distance
+              FROM photo_vec
+              WHERE emb MATCH ? AND k = 15
+            `)
+            .all(centroid) as Array<{ photo_id: string; distance: number }>;
+
+          for (const cand of candidates) {
+            if (cand.distance <= maxDistance) {
+              // Check if already in collection
+              const isMember = db
+                .prepare('SELECT 1 FROM collection_photos WHERE collection_id = ? AND photo_id = ?')
+                .get(coll.id, cand.photo_id);
+
+              if (!isMember) {
+                const alreadySuggested = suggestionExists('collection_semantic', (p) => {
+                  return p.collection_id === coll.id && p.photo_id === cand.photo_id;
+                });
+
+                if (!alreadySuggested) {
+                  const photo = db
+                    .prepare('SELECT filename FROM photos WHERE id = ?')
+                    .get(cand.photo_id) as { filename: string } | undefined;
+
+                  const similarityPct = Math.round((1 - cand.distance) * 100);
+                  const payload = {
+                    collection_id: coll.id,
+                    collection_name: coll.name,
+                    photo_id: cand.photo_id,
+                    photo_filename: photo?.filename || cand.photo_id,
+                    similarity: similarityPct,
+                    title: `เพิ่มรูปเข้าเรื่องราว "${coll.name}" (แนะนำจากความคล้ายคลึง)`,
+                    reason: `รูป "${photo?.filename}" มีลักษณะภาพใกล้เคียงกับเรื่องราวนี้ (${similarityPct}% ความคล้าย)`,
+                  };
+
+                  insertStmt.run(genId(), 'collection_semantic', JSON.stringify(payload), now);
+                  addedCount++;
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Semantic collection suggestions skipped:', err);
+    }
   }
 
   return { added: addedCount };

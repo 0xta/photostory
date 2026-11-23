@@ -142,6 +142,7 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   meal_gap_min: '90',
   auto_link_places: 'false',
   semantic_coll_cosine: '0.30',
+  ml_enabled: '1',
   lapsed_months: '6',
   target_year: '2026',
   theme: 'dark',  // 'light' | 'warm' | 'dark'
