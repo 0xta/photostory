@@ -94,6 +94,8 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
       params.push(event);
     }
 
+    const semScoreMap = new Map<string, number>();
+    const ftsMatchIds = new Set<string>();
     if (q && q.trim().length >= 2) {
       const qTrim = q.trim();
       let semanticIds: string[] = [];
@@ -101,7 +103,21 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
         try {
           const queryEmb = await embedText(qTrim);
           const similar = searchSimilarPhotos(queryEmb, 100, 0.20);
+          for (const s of similar) {
+            semScoreMap.set(s.photo_id, s.score);
+          }
           semanticIds = similar.map((s) => s.photo_id);
+        } catch {}
+      }
+
+      if (qTrim.length >= 3) {
+        try {
+          const ftsRows = db
+            .prepare("SELECT ref_id FROM search_fts WHERE kind = 'photo' AND search_fts MATCH ?")
+            .all(qTrim) as Array<{ ref_id: string }>;
+          for (const row of ftsRows) {
+            ftsMatchIds.add(row.ref_id);
+          }
         } catch {}
       }
 
@@ -153,6 +169,24 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
     for (const item of items) {
       item.cats = (getCatsStmt.all(item.id) as Array<{ cat: string }>).map((c) => c.cat);
       item.friends = getPersonsStmt.all(item.id);
+      if (q && q.trim().length >= 2) {
+        const inFts = ftsMatchIds.has(item.id);
+        const semScore = semScoreMap.get(item.id) ?? 0;
+        if (inFts && semScore > 0) {
+          item.score = Math.min(1.0, Math.round((0.8 + 0.4 * semScore) * 100) / 100);
+          item.match_type = 'hybrid';
+        } else if (inFts) {
+          item.score = 0.75;
+          item.match_type = 'keyword';
+        } else if (semScore > 0) {
+          item.score = Math.round(semScore * 100) / 100;
+          item.match_type = 'semantic';
+        }
+      }
+    }
+
+    if (q && q.trim().length >= 2) {
+      items.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     }
 
     return { total: countRow.c, items };
@@ -189,6 +223,8 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
       conditions.push('p.event_id = ?');
       params.push(event);
     }
+    const semScoreMap = new Map<string, number>();
+    const ftsMatchIds = new Set<string>();
     if (q && q.trim().length >= 2) {
       const qTrim = q.trim();
       let semanticIds: string[] = [];
@@ -196,7 +232,21 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
         try {
           const queryEmb = await embedText(qTrim);
           const similar = searchSimilarPhotos(queryEmb, 100, 0.20);
+          for (const s of similar) {
+            semScoreMap.set(s.photo_id, s.score);
+          }
           semanticIds = similar.map((s) => s.photo_id);
+        } catch {}
+      }
+
+      if (qTrim.length >= 3) {
+        try {
+          const ftsRows = db
+            .prepare("SELECT ref_id FROM search_fts WHERE kind = 'photo' AND search_fts MATCH ?")
+            .all(qTrim) as Array<{ ref_id: string }>;
+          for (const row of ftsRows) {
+            ftsMatchIds.add(row.ref_id);
+          }
         } catch {}
       }
 
@@ -265,6 +315,23 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
         distanceKm = haversine({ lat: queryLat, lon: queryLon }, { lat: p.lat, lon: p.lon });
       }
 
+      let score: number | undefined;
+      let matchType: string | undefined;
+      if (q && q.trim().length >= 2) {
+        const inFts = ftsMatchIds.has(p.id);
+        const semScore = semScoreMap.get(p.id) ?? 0;
+        if (inFts && semScore > 0) {
+          score = Math.min(1.0, Math.round((0.8 + 0.4 * semScore) * 100) / 100);
+          matchType = 'hybrid';
+        } else if (inFts) {
+          score = 0.75;
+          matchType = 'keyword';
+        } else if (semScore > 0) {
+          score = Math.round(semScore * 100) / 100;
+          matchType = 'semantic';
+        }
+      }
+
       return {
         type: 'Feature' as const,
         geometry: {
@@ -283,6 +350,8 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
           cats: catsMap[p.id] || [],
           persons: personsMap[p.id] || [],
           distance_km: distanceKm !== null ? Math.round(distanceKm * 100) / 100 : undefined,
+          score,
+          match_type: matchType,
         },
       };
     });

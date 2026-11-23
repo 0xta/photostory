@@ -488,7 +488,8 @@
       <div class="modal-header">
         <div class="modal-title-row">
           <span class="modal-title mono" id="photo-modal-filename">photo.jpg</span>
-          <span id="photo-modal-burst-badge" class="burst-badge" style="display: none;">⚡ รัวช็อต</span>
+          <span id="photo-modal-burst-badge" class="burst-badge" style="display: none; position: static;">⚡ รัวช็อต</span>
+          <span id="photo-modal-score-badge" class="score-badge" style="display: none; position: static;">✨ 0%</span>
         </div>
         <button class="btn-close" id="btn-close-photo-modal">&times;</button>
       </div>
@@ -511,6 +512,7 @@
               <div><span class="muted">พิกัด:</span> <span id="photo-modal-gps">-</span></div>
               <div><span class="muted">ขนาด:</span> <span id="photo-modal-dims">-</span></div>
               <div><span class="muted">เหตุการณ์:</span> <span id="photo-modal-event">-</span></div>
+              <div id="photo-modal-score-box" style="display: none; grid-column: 1/-1;"><span class="muted">ความคล้ายคลึง:</span> <span id="photo-modal-score" style="color: #10B981; font-weight: bold;">-</span></div>
             </div>
             <!-- Date editor if missing or need to fix -->
             <div class="date-fix-box" id="photo-date-editor" style="margin-top: 0.5rem;">

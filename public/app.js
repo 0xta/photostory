@@ -477,7 +477,15 @@ async function loadPhotos() {
 
     const container = document.getElementById('photos-list');
     container.innerHTML = '';
-    document.getElementById('photos-filter-count').textContent = `แสดง ${res.items.length} จาก ${res.total} รูป`;
+    if (photoFilters.q) {
+      const topScore =
+        res.items.length > 0 && res.items[0].score
+          ? ` · คะแนนสูงสุด ${Math.round(res.items[0].score * 100)}%`
+          : '';
+      document.getElementById('photos-filter-count').textContent = `ค้นพบ ${res.items.length} รูป (เรียงตามคะแนนความคล้าย${topScore})`;
+    } else {
+      document.getElementById('photos-filter-count').textContent = `แสดง ${res.items.length} จาก ${res.total} รูป`;
+    }
 
     if (res.items.length === 0) {
       container.innerHTML = '<p class="muted" style="grid-column: 1/-1; padding: 2rem; text-align: center;">ไม่พบรูปภาพตามเงื่อนไขที่เลือก</p>';
@@ -503,9 +511,13 @@ function createPhotoThumbCard(photo) {
   card.title = `${photo.filename} (${formatThaiDate(photo.taken_at)})`;
 
   const burstBadge = photo.burst ? '<span class="burst-badge">⚡ รัว</span>' : '';
-  const semBadge =
-    (photo.match_type === 'semantic' || photo.match_type === 'hybrid') && photo.score
-      ? `<span class="burst-badge" style="background: rgba(16, 185, 129, 0.9); right: auto; left: 4px;">✨ ${Math.round(photo.score * 100)}%</span>`
+  const scoreVal = photo.score !== undefined && photo.score !== null ? Number(photo.score) : 0;
+  const matchType = photo.match_type || 'semantic';
+  const icon = matchType === 'keyword' ? '🔍' : (matchType === 'hybrid' ? '⚡' : '✨');
+  const typeLabel = matchType === 'keyword' ? 'คำค้นตรงตัว' : (matchType === 'hybrid' ? 'ผสมผสาน (คำค้น+ความหมาย)' : 'ความหมายภาพ');
+  const scoreBadge =
+    scoreVal > 0
+      ? `<span class="score-badge" title="คะแนนความคล้าย: ${Math.round(scoreVal * 100)}% (${typeLabel})">${icon} ${Math.round(scoreVal * 100)}%</span>`
       : '';
 
   // Dots for categories and friends
@@ -521,7 +533,7 @@ function createPhotoThumbCard(photo) {
   card.innerHTML = `
     <img src="/api/thumbs/${photo.id}" loading="lazy" alt="${photo.filename}" />
     ${burstBadge}
-    ${semBadge}
+    ${scoreBadge}
     ${dotsHtml}
   `;
   return card;
@@ -539,6 +551,31 @@ async function openPhotoModal(photoId) {
     // Burst indicator
     const burstBadge = document.getElementById('photo-modal-burst-badge');
     burstBadge.style.display = photo.burst ? 'inline-block' : 'none';
+
+    // Similarity Score in Modal
+    const activeItem = loadedPhotos[activePhotoIndex];
+    const scoreNum = photo.score ?? activeItem?.score ?? 0;
+    const matchType = photo.match_type ?? activeItem?.match_type ?? 'semantic';
+    const scoreBadgeEl = document.getElementById('photo-modal-score-badge');
+    const scoreBoxEl = document.getElementById('photo-modal-score-box');
+    const scoreTextEl = document.getElementById('photo-modal-score');
+
+    if (scoreNum > 0) {
+      const pct = Math.round(scoreNum * 100);
+      const icon = matchType === 'keyword' ? '🔍' : (matchType === 'hybrid' ? '⚡' : '✨');
+      const typeLabel = matchType === 'keyword' ? 'คำค้นตรงตัว (FTS)' : (matchType === 'hybrid' ? 'ผสมผสาน (คำค้น + ความหมาย AI)' : 'ความคล้ายคลึงเชิงความหมาย (AI Vector)');
+      if (scoreBadgeEl) {
+        scoreBadgeEl.style.display = 'inline-flex';
+        scoreBadgeEl.textContent = `${icon} ${pct}%`;
+      }
+      if (scoreBoxEl) {
+        scoreBoxEl.style.display = 'block';
+        if (scoreTextEl) scoreTextEl.textContent = `${icon} ${pct}% (${typeLabel})`;
+      }
+    } else {
+      if (scoreBadgeEl) scoreBadgeEl.style.display = 'none';
+      if (scoreBoxEl) scoreBoxEl.style.display = 'none';
+    }
 
     // EXIF
     document.getElementById('photo-modal-date').textContent = formatThaiDate(photo.taken_at);
