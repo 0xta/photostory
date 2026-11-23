@@ -63,7 +63,9 @@ export const placesRoutes: FastifyPluginAsync = async (app) => {
             FROM photo_places pp
             JOIN photos p ON pp.photo_id = p.id
             WHERE pp.place_id = pl.id AND p.taken_at IS NOT NULL
-          ) as visit_count
+          ) as visit_count,
+          (SELECT COUNT(*) FROM meals m WHERE m.place_id = pl.id) as meal_count,
+          (SELECT ROUND(AVG(m.rating), 1) FROM meals m WHERE m.place_id = pl.id AND m.rating IS NOT NULL) as avg_rating
         FROM places pl
         ${whereClause}
         ORDER BY pl.created_at DESC
@@ -170,7 +172,9 @@ export const placesRoutes: FastifyPluginAsync = async (app) => {
             FROM photo_places pp
             JOIN photos p ON pp.photo_id = p.id
             WHERE pp.place_id = pl.id AND p.taken_at IS NOT NULL
-          ) as visit_count
+          ) as visit_count,
+          (SELECT COUNT(*) FROM meals m WHERE m.place_id = pl.id) as meal_count,
+          (SELECT ROUND(AVG(m.rating), 1) FROM meals m WHERE m.place_id = pl.id AND m.rating IS NOT NULL) as avg_rating
         FROM places pl
         WHERE pl.id = ?
       `)
@@ -214,11 +218,31 @@ export const placesRoutes: FastifyPluginAsync = async (app) => {
       .prepare('SELECT id, name, type FROM collections WHERE place_id = ? LIMIT 1')
       .get(place.id) as any;
 
+    // Find linked meals (FR-1105 Restaurant page)
+    const meals = db
+      .prepare(`
+        SELECT
+          m.id, m.taken_at, m.meal_type, m.note, m.rating,
+          (SELECT COUNT(*) FROM meal_photos mp WHERE mp.meal_id = m.id) as photo_count
+        FROM meals m
+        WHERE m.place_id = ?
+        ORDER BY m.taken_at DESC
+      `)
+      .all(place.id) as any[];
+
+    const ratingRows = meals.filter((m) => m.rating != null);
+    const avgRating = ratingRows.length > 0
+      ? Math.round((ratingRows.reduce((acc, m) => acc + m.rating, 0) / ratingRows.length) * 10) / 10
+      : null;
+
     return {
       ...place,
       photos,
       friends,
       linked_collection: linkedCollection || null,
+      meals,
+      meal_count: meals.length,
+      avg_rating: avgRating,
     };
   });
 

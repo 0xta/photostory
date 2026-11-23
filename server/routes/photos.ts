@@ -303,7 +303,18 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
       `)
       .all(photo.id);
 
-    return { ...photo, cats, friends, event, places };
+    const meal = db
+      .prepare(`
+        SELECT m.id, m.meal_type, m.taken_at, pl.name as place_name
+        FROM meal_photos mp
+        JOIN meals m ON mp.meal_id = m.id
+        LEFT JOIN places pl ON m.place_id = pl.id
+        WHERE mp.photo_id = ?
+        LIMIT 1
+      `)
+      .get(photo.id);
+
+    return { ...photo, cats, friends, event, places, meal: meal || null };
   });
 
   // PATCH /api/photos/:id (note, taken_at, lat, lon)

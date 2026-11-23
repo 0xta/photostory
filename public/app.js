@@ -52,6 +52,13 @@ let allPlaces = [];
 let currentPlaceFilter = '';
 let currentPlaceDetail = null;
 
+// Meals state (Phase 1.5C)
+let allMeals = [];
+let currentMealFilterType = '';
+let currentMealFilterPlace = '';
+let currentMealFilterMonth = '';
+let currentMealDetail = null;
+
 // Filter state for Photos tab (FR-601)
 const photoFilters = {
   cat: '',
@@ -235,6 +242,7 @@ function switchTab(tabName) {
   if (tabName === 'friends') loadFriends();
   if (tabName === 'stories') loadStories();
   if (tabName === 'places') loadPlaces();
+  if (tabName === 'meals') loadMeals();
   if (tabName === 'suggestions') loadSuggestions();
   if (tabName === 'map') {
     loadMap(true);
@@ -641,6 +649,32 @@ async function openPhotoModal(photoId) {
         chip.textContent = `📍 ${pl.name} (${pl.source || 'manual'})`;
         placesContainer.appendChild(chip);
       });
+    }
+
+    // Meal indicator (Phase 1.5C)
+    const mealSection = document.getElementById('photo-modal-meal-section');
+    const mealInfo = document.getElementById('photo-modal-meal-info');
+    if (mealSection && mealInfo) {
+      if (photo.meal) {
+        mealSection.style.display = 'block';
+        const typeTh =
+          photo.meal.meal_type === 'breakfast'
+            ? '🍳 เช้า'
+            : photo.meal.meal_type === 'lunch'
+            ? '🍲 กลางวัน'
+            : photo.meal.meal_type === 'dinner'
+            ? '🍷 เย็น'
+            : photo.meal.meal_type === 'cafe'
+            ? '☕ คาเฟ่'
+            : '🍽️ อื่นๆ';
+        mealInfo.innerHTML = `
+          <span class="type-pill ${photo.meal.meal_type}">${typeTh}</span>
+          <span style="font-size: 0.85rem; font-weight: 500;">${escapeHtml(photo.meal.place_name || 'มื้ออาหาร')}</span>
+          <button class="btn btn-sm" style="margin-left: auto;" onclick="closeAllModals(); openMealDetail('${photo.meal.id}');">ดูมื้ออาหาร</button>
+        `;
+      } else {
+        mealSection.style.display = 'none';
+      }
     }
 
     document.getElementById('modal-photo').style.display = 'flex';
@@ -1217,13 +1251,24 @@ async function loadSuggestions() {
       card.className = 'suggestion-card';
 
       const p = s.payload || {};
-      const icon = s.kind === 'collection_create' ? '✨' : '📌';
+      const icon = s.kind === 'collection_create' ? '✨' : s.kind === 'meal' ? '🍽️' : s.kind === 'place_link' ? '📍' : '📌';
+
+      let photosPreview = '';
+      if (s.kind === 'meal' && Array.isArray(p.photo_ids) && p.photo_ids.length > 0) {
+        photosPreview = `
+          <div style="display: flex; gap: 4px; margin-top: 0.4rem; overflow-x: auto;">
+            ${p.photo_ids.slice(0, 4).map((pid) => `<img src="/api/thumbs/${pid}" style="width: 44px; height: 44px; border-radius: 4px; object-fit: cover;" />`).join('')}
+            ${p.photo_ids.length > 4 ? `<span class="muted mono" style="align-self: center; font-size: 0.75rem; margin-left: 4px;">+${p.photo_ids.length - 4}</span>` : ''}
+          </div>
+        `;
+      }
 
       card.innerHTML = `
         <div class="suggestion-icon">${icon}</div>
         <div class="suggestion-content">
           <div class="suggestion-title">${escapeHtml(p.title || 'ข้อเสนอแนะ')}</div>
           <div class="suggestion-reason">${escapeHtml(p.reason || '')}</div>
+          ${photosPreview}
         </div>
         <div class="suggestion-actions">
           <button class="btn btn-sm btn-primary" onclick="acceptSuggestion('${s.id}')">✓ ยอมรับ</button>
@@ -1243,6 +1288,8 @@ async function acceptSuggestion(id) {
     showToast('ยอมรับข้อเสนอเรียบร้อย', 'success');
     loadSuggestions();
     loadStories();
+    loadPlaces();
+    loadMeals();
     updateStatus();
   } catch {
     showToast('ไม่สามารถตอบรับข้อเสนอได้', 'error');
@@ -1453,11 +1500,237 @@ async function unlinkPhotoFromPlace(placeId, photoId) {
   }
 }
 
+// ── Meal Diary (Phase 1.5C, FR-1101..1106) ───────────────────
+async function loadMeals() {
+  try {
+    const params = new URLSearchParams();
+    if (currentMealFilterType) params.append('type', currentMealFilterType);
+    if (currentMealFilterPlace) params.append('place', currentMealFilterPlace);
+    if (currentMealFilterMonth) params.append('month', currentMealFilterMonth);
+
+    const queryStr = params.toString() ? `?${params.toString()}` : '';
+    const res = await api(`/meals${queryStr}`);
+    allMeals = res.items;
+
+    const countEl = document.getElementById('meals-count');
+    if (countEl) countEl.textContent = `${allMeals.length} มื้อ`;
+
+    // Populate filter-meal-place and select-meal-place dropdowns
+    const filterPlaceEl = document.getElementById('filter-meal-place');
+    const selectPlaceEl = document.getElementById('select-meal-place');
+
+    if (filterPlaceEl && allPlaces.length > 0) {
+      const currentSelected = filterPlaceEl.value;
+      filterPlaceEl.innerHTML = '<option value="">ทุกร้านอาหาร</option>';
+      allPlaces.forEach((pl) => {
+        const opt = document.createElement('option');
+        opt.value = pl.id;
+        opt.textContent = `${pl.name} (${pl.meal_count || 0} มื้อ)`;
+        filterPlaceEl.appendChild(opt);
+      });
+      filterPlaceEl.value = currentSelected;
+    }
+
+    if (selectPlaceEl && allPlaces.length > 0) {
+      selectPlaceEl.innerHTML = '<option value="">-- เลือกร้านอาหารที่เคยบันทึกไว้ --</option>';
+      allPlaces.forEach((pl) => {
+        const opt = document.createElement('option');
+        opt.value = pl.id;
+        opt.textContent = pl.name;
+        selectPlaceEl.appendChild(opt);
+      });
+    }
+
+    const containerEl = document.getElementById('meals-container');
+    if (!containerEl) return;
+
+    if (allMeals.length === 0) {
+      containerEl.innerHTML = `
+        <div class="empty-state" style="padding: 2.5rem; text-align: center;">
+          <div class="empty-icon">🍽️</div>
+          <h3>ยังไม่มีบันทึกมื้ออาหาร</h3>
+          <p class="muted">กดปุ่ม "+ บันทึกมื้ออาหาร" เพื่อเริ่มต้นไดอารี่อาหาร หรือตรวจหาข้อเสนอแนะอัตโนมัติ</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Group meals by Month & Year (FR-1104)
+    const groupsByMonth = {};
+    allMeals.forEach((meal) => {
+      let groupKey = 'ไม่มีวันที่';
+      let sortKey = 0;
+      if (meal.taken_at) {
+        const d = new Date(meal.taken_at);
+        const y = d.getFullYear();
+        const m = d.getMonth();
+        groupKey = `${THAI_MONTHS_ABBR[m]} ${y + 543}`;
+        sortKey = y * 100 + m;
+      }
+      if (!groupsByMonth[groupKey]) {
+        groupsByMonth[groupKey] = { title: groupKey, sortKey, meals: [] };
+      }
+      groupsByMonth[groupKey].meals.push(meal);
+    });
+
+    containerEl.innerHTML = '';
+    const sortedGroups = Object.values(groupsByMonth).sort((a, b) => b.sortKey - a.sortKey);
+
+    sortedGroups.forEach((group) => {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'meals-group';
+
+      const heading = document.createElement('div');
+      heading.className = 'meals-month-heading';
+      heading.innerHTML = `<span>🗓️ ${escapeHtml(group.title)}</span> <span class="muted" style="font-size: 0.8rem; font-weight: normal;">(${group.meals.length} มื้อ)</span>`;
+      groupEl.appendChild(heading);
+
+      const grid = document.createElement('div');
+      grid.className = 'meals-grid';
+
+      group.meals.forEach((meal) => {
+        const card = document.createElement('div');
+        card.className = 'meal-card';
+
+        const mealTypeTh =
+          meal.meal_type === 'breakfast'
+            ? '🍳 เช้า'
+            : meal.meal_type === 'lunch'
+            ? '🍲 กลางวัน'
+            : meal.meal_type === 'dinner'
+            ? '🍷 เย็น'
+            : meal.meal_type === 'cafe'
+            ? '☕ คาเฟ่'
+            : '🍽️ อื่นๆ';
+
+        const ratingStars = meal.rating ? '⭐'.repeat(meal.rating) : '';
+        const restaurantName = meal.place_name || 'ร้านอาหารไม่ระบุชื่อ';
+        const dateStr = formatThaiDateShort(meal.taken_at);
+        const timeStr = formatTime(meal.taken_at);
+
+        let companionsHtml = '';
+        if (meal.companions && meal.companions.length > 0) {
+          companionsHtml = `
+            <div class="meal-companions-row">
+              <span class="muted" style="font-size: 0.75rem;">ร่วมกับ:</span>
+              ${meal.companions
+                .map(
+                  (c) =>
+                    `<span class="tag-chip" style="font-size: 0.72rem; padding: 1px 6px;"><span class="cat-dot" style="background-color: ${c.color || '#E56B50'}; width: 6px; height: 6px;"></span>${escapeHtml(c.name)}</span>`
+                )
+                .join('')}
+            </div>
+          `;
+        }
+
+        let photoStripHtml = '';
+        if (meal.photos && meal.photos.length > 0) {
+          photoStripHtml = `
+            <div class="meal-photo-strip">
+              ${meal.photos
+                .map(
+                  (p) =>
+                    `<img class="meal-photo-thumb" src="/api/thumbs/${p.id}" alt="dish" onclick="event.stopPropagation(); openPhotoModal('${p.id}');" />`
+                )
+                .join('')}
+            </div>
+          `;
+        }
+
+        card.innerHTML = `
+          <div class="meal-header-row">
+            <div>
+              <span class="type-pill ${meal.meal_type}" style="margin-bottom: 0.25rem;">${mealTypeTh}</span>
+              <div class="meal-restaurant-name">${escapeHtml(restaurantName)}</div>
+            </div>
+            ${ratingStars ? `<span style="font-size: 0.85rem; color: #F0A63C;">${ratingStars}</span>` : ''}
+          </div>
+          <div class="meal-body">
+            <div class="meal-meta-row mono">
+              <span>📅 ${dateStr}</span>
+              <span>⏰ ${timeStr}</span>
+              <span>📸 ${meal.photo_count} รูป</span>
+            </div>
+            ${meal.note ? `<div class="meal-note-text">${escapeHtml(meal.note)}</div>` : ''}
+            ${companionsHtml}
+          </div>
+          ${photoStripHtml}
+        `;
+
+        card.addEventListener('click', () => openMealDetail(meal.id));
+        grid.appendChild(card);
+      });
+
+      groupEl.appendChild(grid);
+      containerEl.appendChild(groupEl);
+    });
+  } catch {
+    showToast('ไม่สามารถโหลดไดอารี่อาหารได้', 'error');
+  }
+}
+
+async function openMealDetail(mealId) {
+  try {
+    const meal = await api(`/meals/${mealId}`);
+    currentMealDetail = meal;
+
+    document.getElementById('meal-detail-title').textContent = meal.place_name || 'ร้านอาหารไม่ระบุชื่อ';
+
+    const typeBadge = document.getElementById('meal-detail-type-badge');
+    typeBadge.className = `type-pill ${meal.meal_type}`;
+    typeBadge.textContent =
+      meal.meal_type === 'breakfast'
+        ? '🍳 เช้า'
+        : meal.meal_type === 'lunch'
+        ? '🍲 กลางวัน'
+        : meal.meal_type === 'dinner'
+        ? '🍷 เย็น'
+        : meal.meal_type === 'cafe'
+        ? '☕ คาเฟ่'
+        : '🍽️ อื่นๆ';
+
+    document.getElementById('meal-detail-rating').textContent = meal.rating ? '⭐'.repeat(meal.rating) : '';
+    document.getElementById('meal-detail-date').textContent = `${formatThaiDate(meal.taken_at)} ${formatTime(meal.taken_at)}`;
+    document.getElementById('meal-detail-event').textContent = meal.event_name || 'ไม่มีเหตุการณ์';
+
+    const compText = (meal.companions || []).map((c) => c.name).join(', ') || 'ไม่มี';
+    document.getElementById('meal-detail-companions').textContent = compText;
+
+    const noteEl = document.getElementById('meal-detail-note');
+    if (meal.note) {
+      noteEl.style.display = 'block';
+      noteEl.textContent = meal.note;
+    } else {
+      noteEl.style.display = 'none';
+    }
+
+    document.getElementById('meal-detail-photo-count').textContent = String(meal.photos.length);
+
+    const photosGrid = document.getElementById('meal-detail-photos');
+    photosGrid.innerHTML = '';
+    meal.photos.forEach((photo) => {
+      const card = document.createElement('div');
+      card.className = 'photo-card';
+      card.innerHTML = `<img src="/api/thumbs/${photo.id}" alt="${escapeHtml(photo.filename)}" />`;
+      card.addEventListener('click', () => {
+        closeAllModals();
+        openPhotoModal(photo.id);
+      });
+      photosGrid.appendChild(card);
+    });
+
+    document.getElementById('modal-meal-detail').style.display = 'flex';
+  } catch {
+    showToast('ไม่สามารถเปิดรายละเอียดมื้ออาหารได้', 'error');
+  }
+}
+
 // Global exposure for event handlers
 window.openStoryDetail = openStoryDetail;
 window.removePhotoFromStory = removePhotoFromStory;
 window.openPlaceDetail = openPlaceDetail;
 window.unlinkPhotoFromPlace = unlinkPhotoFromPlace;
+window.openMealDetail = openMealDetail;
 window.acceptSuggestion = acceptSuggestion;
 window.dismissSuggestion = dismissSuggestion;
 window.scanSuggestions = scanSuggestions;
@@ -1503,6 +1776,7 @@ async function init() {
   setupVoiceInput(document.getElementById('btn-voice-story-note'), document.getElementById('input-story-note'));
   setupVoiceInput(document.getElementById('btn-voice-place-name'), document.getElementById('input-place-name'));
   setupVoiceInput(document.getElementById('btn-voice-place-note'), document.getElementById('input-place-note'));
+  setupVoiceInput(document.getElementById('btn-voice-meal-note'), document.getElementById('input-meal-note'));
 
   // Close buttons for modals
   document.getElementById('btn-close-photo-modal')?.addEventListener('click', closeAllModals);
@@ -1520,6 +1794,10 @@ async function init() {
   document.getElementById('btn-cancel-create-place')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-close-place-detail')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-close-place-footer')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-create-meal')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-cancel-create-meal')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-meal-detail')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-meal-footer')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-close-import')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-cancel-import')?.addEventListener('click', closeAllModals);
 
@@ -1965,6 +2243,85 @@ async function init() {
     }
   });
 
+  // Meal controls (Phase 1.5C)
+  document.getElementById('btn-create-meal')?.addEventListener('click', () => {
+    document.getElementById('select-meal-type').value = 'lunch';
+    document.getElementById('select-meal-rating').value = '';
+    document.getElementById('select-meal-place').value = '';
+    document.getElementById('input-meal-new-restaurant').value = '';
+    document.getElementById('input-meal-date').value = new Date().toISOString().slice(0, 16);
+    document.getElementById('input-meal-note').value = '';
+    document.getElementById('modal-create-meal').style.display = 'flex';
+  });
+
+  document.getElementById('btn-save-new-meal')?.addEventListener('click', async () => {
+    const meal_type = document.getElementById('select-meal-type').value;
+    const place_id = document.getElementById('select-meal-place').value || null;
+    const restaurant_name = document.getElementById('input-meal-new-restaurant').value.trim() || undefined;
+    const dateVal = document.getElementById('input-meal-date').value;
+    const ratingVal = document.getElementById('select-meal-rating').value;
+    const note = document.getElementById('input-meal-note').value.trim();
+
+    const taken_at = dateVal ? new Date(dateVal).getTime() : Date.now();
+    const rating = ratingVal ? parseInt(ratingVal, 10) : null;
+
+    try {
+      await api('/meals', {
+        method: 'POST',
+        body: JSON.stringify({
+          meal_type,
+          place_id,
+          restaurant_name,
+          taken_at,
+          rating,
+          note,
+        }),
+      });
+      document.getElementById('modal-create-meal').style.display = 'none';
+      showToast('บันทึกมื้ออาหารเรียบร้อย', 'success');
+      loadMeals();
+      updateStatus();
+    } catch (err) {
+      showToast(err.message || 'ไม่สามารถบันทึกมื้ออาหารได้', 'error');
+    }
+  });
+
+  document.getElementById('btn-delete-meal')?.addEventListener('click', async () => {
+    if (!currentMealDetail) return;
+    if (!confirm('ต้องการลบมื้ออาหารนี้หรือไม่?\n(รูปภาพทั้งหมดในเครื่องจะไม่ถูกลบ)')) {
+      return;
+    }
+    try {
+      await api(`/meals/${currentMealDetail.id}`, { method: 'DELETE' });
+      document.getElementById('modal-meal-detail').style.display = 'none';
+      showToast('ลบมื้ออาหารเรียบร้อย (รูปภาพไม่ถูกลบ)', 'info');
+      loadMeals();
+      updateStatus();
+    } catch {
+      showToast('ไม่สามารถลบมื้ออาหารได้', 'error');
+    }
+  });
+
+  // Meal type filter buttons
+  document.querySelectorAll('[data-meal-type]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-meal-type]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMealFilterType = btn.dataset.mealType;
+      loadMeals();
+    });
+  });
+
+  document.getElementById('filter-meal-place')?.addEventListener('change', (e) => {
+    currentMealFilterPlace = e.target.value;
+    loadMeals();
+  });
+
+  document.getElementById('filter-meal-month')?.addEventListener('change', (e) => {
+    currentMealFilterMonth = e.target.value;
+    loadMeals();
+  });
+
   // Suggestions controls (Phase 1.5A)
   document.getElementById('btn-scan-suggestions')?.addEventListener('click', scanSuggestions);
 
@@ -1973,6 +2330,7 @@ async function init() {
   await loadFriends();
   await loadStories();
   await loadPlaces();
+  await loadMeals();
   await loadSuggestions();
   await loadDashboard();
 

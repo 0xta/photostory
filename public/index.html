@@ -38,9 +38,9 @@
     <button class="tab" data-tab="map" role="tab">แผนที่</button>
     <button class="tab" data-tab="stories" role="tab">เรื่องราว</button>
     <button class="tab" data-tab="places" role="tab">สถานที่</button>
+    <button class="tab" data-tab="meals" role="tab">🍽️ อาหาร</button>
     <button class="tab" data-tab="suggestions" role="tab">กล่องข้อเสนอ <span id="badge-suggestions" class="badge-count" style="display:none">0</span></button>
     <!-- Phase 1.5 tabs (hidden until implemented) -->
-    <button class="tab phase15" data-tab="meals" role="tab" style="display:none">มื้ออาหาร</button>
     <button class="tab phase15" data-tab="recap" role="tab" style="display:none">สรุปเดือน</button>
   </nav>
 
@@ -366,6 +366,55 @@
       <div class="places-grid" id="places-list"></div>
     </section>
 
+    <!-- ── Meal Diary View (Phase 1.5C, FR-1101..1106) ───────────── -->
+    <section id="view-meals" class="view">
+      <div class="section-header">
+        <div>
+          <h2 class="view-title">ไดอารี่อาหาร (Meal Diary)</h2>
+          <p class="muted" style="font-size: 0.82rem; margin-top: 0.2rem;">
+            บันทึกมื้ออาหาร ร้านโปรด และความทรงจำบนโต๊ะอาหาร จัดกลุ่มตามเดือนและร้านอาหาร
+          </p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-create-meal">+ บันทึกมื้ออาหาร</button>
+      </div>
+
+      <!-- Filter bar for meals -->
+      <div class="filter-bar card" style="margin-bottom: 1rem; padding: 0.5rem 0.8rem;">
+        <div class="filter-row" style="gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <span class="filter-label">มื้อ:</span>
+          <div class="meal-type-filters">
+            <button class="btn btn-sm active" data-meal-type="">ทั้งหมด</button>
+            <button class="btn btn-sm" data-meal-type="breakfast">🍳 เช้า</button>
+            <button class="btn btn-sm" data-meal-type="lunch">🍲 กลางวัน</button>
+            <button class="btn btn-sm" data-meal-type="dinner">🍷 เย็น</button>
+            <button class="btn btn-sm" data-meal-type="cafe">☕ คาเฟ่</button>
+            <button class="btn btn-sm" data-meal-type="other">🍽️ อื่นๆ</button>
+          </div>
+          <select id="filter-meal-place" class="input input-sm" style="max-width: 180px;">
+            <option value="">ทุกร้านอาหาร</option>
+          </select>
+          <select id="filter-meal-month" class="input input-sm" style="max-width: 130px;">
+            <option value="">ทุกเดือน</option>
+            <option value="1">มกราคม</option>
+            <option value="2">กุมภาพันธ์</option>
+            <option value="3">มีนาคม</option>
+            <option value="4">เมษายน</option>
+            <option value="5">พฤษภาคม</option>
+            <option value="6">มิถุนายน</option>
+            <option value="7">กรกฎาคม</option>
+            <option value="8">สิงหาคม</option>
+            <option value="9">กันยายน</option>
+            <option value="10">ตุลาคม</option>
+            <option value="11">พฤศจิกายน</option>
+            <option value="12">ธันวาคม</option>
+          </select>
+          <span class="muted mono" id="meals-count" style="margin-left: auto; font-size: 0.82rem;">0 มื้อ</span>
+        </div>
+      </div>
+
+      <div id="meals-container"></div>
+    </section>
+
     <!-- ── Suggestions Inbox View (Phase 1.5A, DR10 / Section 8.9) ── -->
     <section id="view-suggestions" class="view">
       <div class="section-header">
@@ -470,6 +519,12 @@
               <button class="btn btn-sm" id="btn-add-photo-to-place">+ ผูก</button>
             </div>
             <div id="photo-modal-places-list" class="tag-chips" style="margin-top: 0.4rem;"></div>
+          </div>
+
+          <!-- Meal Membership Indicator (FR-1103) -->
+          <div class="meta-section" id="photo-modal-meal-section" style="display: none;">
+            <h4 class="meta-heading">มื้ออาหาร</h4>
+            <div id="photo-modal-meal-info" style="display: flex; gap: 0.4rem; align-items: center;"></div>
           </div>
 
           <!-- Delete action (FR-405) -->
@@ -832,6 +887,100 @@
       <div class="modal-footer flex-between">
         <button class="btn btn-danger btn-sm" id="btn-delete-place">ลบสถานที่นี้</button>
         <button class="btn" id="btn-close-place-footer">ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4f. Modal: Create Meal Modal (Phase 1.5C, FR-1101..1103) -->
+  <div id="modal-create-meal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">🍽️ บันทึกมื้ออาหารใหม่ (New Meal)</h3>
+        <button class="btn-close" id="btn-close-create-meal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label class="form-label" for="select-meal-type">ประเภทมื้อ</label>
+            <select id="select-meal-type" class="input">
+              <option value="breakfast">🍳 อาหารเช้า (Breakfast)</option>
+              <option value="lunch" selected>🍲 อาหารกลางวัน (Lunch)</option>
+              <option value="dinner">🍷 อาหารเย็น (Dinner)</option>
+              <option value="cafe">☕ คาเฟ่ / ของว่าง (Cafe)</option>
+              <option value="other">🍽️ อื่นๆ</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label class="form-label" for="select-meal-rating">คะแนนความอร่อย</label>
+            <select id="select-meal-rating" class="input">
+              <option value="">(ไม่ระบุ)</option>
+              <option value="5">⭐⭐⭐⭐⭐ (5/5 ดีเยี่ยม)</option>
+              <option value="4">⭐⭐⭐⭐ (4/5 อร่อยมาก)</option>
+              <option value="3">⭐⭐⭐ (3/5 พอใช้)</option>
+              <option value="2">⭐⭐ (2/5 ธรรมดา)</option>
+              <option value="1">⭐ (1/5 ไม่แนะนำ)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="select-meal-place">ร้านอาหาร / สถานที่</label>
+          <select id="select-meal-place" class="input">
+            <option value="">-- เลือกร้านอาหารที่เคยบันทึกไว้ --</option>
+          </select>
+          <input type="text" id="input-meal-new-restaurant" class="input" placeholder="หรือพิมพ์ชื่อร้านอาหารใหม่..." style="margin-top: 0.4rem;" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-meal-date">วันและเวลาที่รับประทาน</label>
+          <input type="datetime-local" id="input-meal-date" class="input mono" />
+        </div>
+
+        <div class="form-group">
+          <div class="flex-between">
+            <label class="form-label" for="input-meal-note">เมนูเด่น / บันทึกความทรงจำ</label>
+            <button class="btn-voice" id="btn-voice-meal-note" title="พูดข้อความ">🎤 พูด</button>
+          </div>
+          <textarea id="input-meal-note" class="input" rows="2" placeholder="เช่น ก๋วยเตี๋ยวเรือเนื้อวากิว, ครัวซองต์ชาเขียว, กาแฟดริป..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-cancel-create-meal">ยกเลิก</button>
+        <button class="btn btn-primary" id="btn-save-new-meal">บันทึกมื้ออาหาร</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4g. Modal: Meal Detail Modal (Phase 1.5C, FR-1103..1105) -->
+  <div id="modal-meal-detail" class="modal-backdrop" style="display: none;">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="type-pill" id="meal-detail-type-badge">มื้ออาหาร</span>
+          <h3 class="modal-title" id="meal-detail-title">ชื่อร้านอาหาร</h3>
+          <span id="meal-detail-rating" style="margin-left: 0.5rem; color: #F0A63C; font-size: 0.95rem;"></span>
+        </div>
+        <button class="btn-close" id="btn-close-meal-detail">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="meta-section" style="margin-bottom: 0.8rem;">
+          <div class="meta-grid mono">
+            <div><span class="muted">วันที่:</span> <span id="meal-detail-date">-</span></div>
+            <div><span class="muted">เหตุการณ์:</span> <span id="meal-detail-event">-</span></div>
+            <div><span class="muted">เพื่อนร่วมโต๊ะ:</span> <span id="meal-detail-companions">ไม่มี</span></div>
+          </div>
+        </div>
+
+        <p class="card" id="meal-detail-note" style="margin-bottom: 1rem; font-size: 0.92rem; padding: 0.6rem 0.8rem; background: var(--panel2);"></p>
+
+        <div class="meta-section">
+          <h4 class="meta-heading">รูปภาพในมื้อนี้ (<span id="meal-detail-photo-count">0</span> รูป)</h4>
+          <div class="photos-grid" id="meal-detail-photos" style="max-height: 280px; overflow-y: auto;"></div>
+        </div>
+      </div>
+      <div class="modal-footer flex-between">
+        <button class="btn btn-danger btn-sm" id="btn-delete-meal">ลบมื้อนี้</button>
+        <button class="btn" id="btn-close-meal-footer">ปิด</button>
       </div>
     </div>
   </div>

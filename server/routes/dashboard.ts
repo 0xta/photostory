@@ -20,6 +20,15 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     const totalPersons = (
       db.prepare('SELECT COUNT(*) as c FROM persons').get() as { c: number }
     ).c;
+    const totalCollections = (
+      db.prepare('SELECT COUNT(*) as c FROM collections').get() as { c: number }
+    ).c;
+    const totalPlaces = (
+      db.prepare('SELECT COUNT(*) as c FROM places').get() as { c: number }
+    ).c;
+    const totalMeals = (
+      db.prepare('SELECT COUNT(*) as c FROM meals').get() as { c: number }
+    ).c;
 
     const taggedPhotosCount = (
       db
@@ -112,11 +121,18 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       };
     });
 
+    const pendingSuggestionsCount = (
+      db.prepare("SELECT COUNT(*) as c FROM suggestions WHERE status = 'pending'").get() as { c: number }
+    ).c;
+
     return {
       totals: {
         photos: totalPhotos,
         events: totalEvents,
         persons: totalPersons,
+        collections: totalCollections,
+        places: totalPlaces,
+        meals: totalMeals,
         tagged_pct: taggedPct,
       },
       target_year: yearNum,
@@ -127,6 +143,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         unnamed: unnamedCount,
         burst: burstCount,
         tagged_pct: taggedPct,
+        pending_suggestions: pendingSuggestionsCount,
       },
       recent_events: recent,
     };

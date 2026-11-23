@@ -1,6 +1,6 @@
 // server/routes/suggestions.ts — Suggestions Inbox API (Phase 1.5A)
 import { FastifyPluginAsync } from 'fastify';
-import db from '../db.js';
+import db, { ftsUpsert } from '../db.js';
 import { runSuggestionScan } from '../workers/suggest.js';
 import { genId } from '../utils.js';
 
@@ -53,7 +53,16 @@ export const suggestionsRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /api/suggestions/:id/accept (AC-21 / DR10)
-  app.post<{ Params: { id: string } }>('/api/suggestions/:id/accept', async (req, reply) => {
+  app.post<{
+    Params: { id: string };
+    Body?: {
+      restaurant_name?: string;
+      place_id?: string;
+      meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'cafe' | 'other';
+      note?: string;
+      rating?: number;
+    };
+  }>('/api/suggestions/:id/accept', async (req, reply) => {
     const sugg = db
       .prepare('SELECT * FROM suggestions WHERE id = ?')
       .get(req.params.id) as any;
@@ -113,6 +122,58 @@ export const suggestionsRoutes: FastifyPluginAsync = async (app) => {
             VALUES (?, ?, 'rule', ?)
           `).run(linkedColl.id, payload.photo_id, now);
         }
+      } else if (sugg.kind === 'meal' && Array.isArray(payload.photo_ids) && payload.photo_ids.length > 0) {
+        // Accept meal grouping suggestion (FR-1101 / AC-22 / AC-23)
+        let placeId = req.body?.place_id || payload.place_id || null;
+        const restaurantName = req.body?.restaurant_name || payload.suggested_restaurant;
+
+        if (!placeId && restaurantName && restaurantName.trim()) {
+          const cleanName = restaurantName.trim();
+          const existingPlace = db
+            .prepare("SELECT id FROM places WHERE name = ? AND type = 'restaurant' LIMIT 1")
+            .get(cleanName) as { id: string } | undefined;
+
+          if (existingPlace) {
+            placeId = existingPlace.id;
+          } else {
+            placeId = genId();
+            db.prepare(`
+              INSERT INTO places (id, name, type, radius_m, note, created_at)
+              VALUES (?, ?, 'restaurant', 120, 'สร้างจากข้อเสนอแนะมื้ออาหาร', ?)
+            `).run(placeId, cleanName, now);
+            ftsUpsert('place', placeId, cleanName);
+          }
+        }
+
+        const mealId = genId();
+        const mealType = req.body?.meal_type || payload.meal_type || 'other';
+        const note = (req.body?.note || payload.note || '').trim();
+        const rating = req.body?.rating ?? null;
+
+        db.prepare(`
+          INSERT INTO meals (id, place_id, event_id, taken_at, meal_type, note, rating, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(mealId, placeId, payload.event_id || null, payload.taken_at || null, mealType, note, rating, now);
+
+        const insertMp = db.prepare('INSERT OR IGNORE INTO meal_photos (meal_id, photo_id) VALUES (?, ?)');
+        for (const pid of payload.photo_ids) {
+          insertMp.run(mealId, pid);
+        }
+
+        if (placeId) {
+          const insertPp = db.prepare(`
+            INSERT OR IGNORE INTO photo_places (photo_id, place_id, source)
+            VALUES (?, ?, 'manual')
+          `);
+          for (const pid of payload.photo_ids) {
+            insertPp.run(pid, placeId);
+          }
+        }
+
+        const placeName = placeId
+          ? ((db.prepare('SELECT name FROM places WHERE id = ?').get(placeId) as any)?.name || '')
+          : '';
+        ftsUpsert('meal', mealId, `${mealType} ${placeName} ${note}`);
       }
 
       // Mark suggestion as accepted

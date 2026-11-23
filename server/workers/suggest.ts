@@ -1,6 +1,7 @@
 // server/workers/suggest.ts — Rule-based Suggestion Engine (Phase 1.5, No AI)
 import db, { getSetting } from '../db.js';
 import { genId, haversine } from '../utils.js';
+import { guessMealType } from '../routes/meals.js';
 
 interface SuggestionRow {
   id: string;
@@ -209,6 +210,191 @@ export function runSuggestionScan(): { added: number } {
         }
       }
     }
+  }
+
+  // ── Rule 4: Meal Grouping (Algorithm 8.6 / FR-1101 / AC-22 / AC-23) ─
+  const mealGapMin = Number(getSetting('meal_gap_min') || '90');
+  const mealGapMs = mealGapMin * 60 * 1000;
+  const placeRadiusM = Number(getSetting('place_radius_m') || '120');
+
+  // Candidate photos: category 'อาหาร' OR ('บรรยากาศ' in same event/time)
+  // Not already in meal_photos
+  const foodPhotos = db
+    .prepare(`
+      SELECT p.id, p.filename, p.taken_at, p.lat, p.lon, p.event_id, pc.cat
+      FROM photos p
+      JOIN photo_cats pc ON p.id = pc.photo_id
+      WHERE pc.cat = 'อาหาร'
+        AND p.taken_at IS NOT NULL
+        AND p.id NOT IN (SELECT photo_id FROM meal_photos)
+      ORDER BY p.taken_at ASC
+    `)
+    .all() as Array<{
+      id: string;
+      filename: string;
+      taken_at: number;
+      lat: number | null;
+      lon: number | null;
+      event_id: string | null;
+      cat: string;
+    }>;
+
+  const atmospherePhotos = db
+    .prepare(`
+      SELECT p.id, p.filename, p.taken_at, p.lat, p.lon, p.event_id, pc.cat
+      FROM photos p
+      JOIN photo_cats pc ON p.id = pc.photo_id
+      WHERE pc.cat = 'บรรยากาศ'
+        AND p.taken_at IS NOT NULL
+        AND p.id NOT IN (SELECT photo_id FROM meal_photos)
+        AND p.id NOT IN (SELECT photo_id FROM photo_cats WHERE cat = 'อาหาร')
+      ORDER BY p.taken_at ASC
+    `)
+    .all() as Array<{
+      id: string;
+      filename: string;
+      taken_at: number;
+      lat: number | null;
+      lon: number | null;
+      event_id: string | null;
+      cat: string;
+    }>;
+
+  // An atmosphere photo is included if within mealGapMs of any food photo
+  // and (if both have GPS) within placeRadiusM
+  const matchingAtmos = atmospherePhotos.filter((atmos) => {
+    return foodPhotos.some((food) => {
+      const timeDiff = Math.abs(atmos.taken_at - food.taken_at);
+      if (timeDiff > mealGapMs) return false;
+      if (atmos.lat != null && atmos.lon != null && food.lat != null && food.lon != null) {
+        const distKm = haversine({ lat: atmos.lat, lon: atmos.lon }, { lat: food.lat, lon: food.lon });
+        if (distKm * 1000 > placeRadiusM) return false;
+      }
+      return true;
+    });
+  });
+
+  // Combine candidates and sort by taken_at
+  const allCandidates = [...foodPhotos, ...matchingAtmos].sort((a, b) => a.taken_at - b.taken_at);
+
+  // Group candidates into clusters by time gap and GPS distance
+  const mealGroups: Array<typeof allCandidates> = [];
+  let currentGroup: typeof allCandidates = [];
+
+  for (const photo of allCandidates) {
+    if (currentGroup.length === 0) {
+      currentGroup.push(photo);
+      continue;
+    }
+
+    const prevPhoto = currentGroup[currentGroup.length - 1];
+    const eventChanged = Boolean(photo.event_id && prevPhoto.event_id && photo.event_id !== prevPhoto.event_id);
+    const timeDiff = photo.taken_at - prevPhoto.taken_at;
+
+    let gpsDistanceExceeded = false;
+    if (photo.lat != null && photo.lon != null) {
+      const photosWithGps = currentGroup.filter((p) => p.lat != null && p.lon != null);
+      if (photosWithGps.length > 0) {
+        const cLat = photosWithGps.reduce((s, p) => s + p.lat!, 0) / photosWithGps.length;
+        const cLon = photosWithGps.reduce((s, p) => s + p.lon!, 0) / photosWithGps.length;
+        const distKm = haversine({ lat: photo.lat, lon: photo.lon }, { lat: cLat, lon: cLon });
+        if (distKm * 1000 > placeRadiusM) {
+          gpsDistanceExceeded = true;
+        }
+      }
+    }
+
+    if (eventChanged || timeDiff > mealGapMs || gpsDistanceExceeded) {
+      mealGroups.push(currentGroup);
+      currentGroup = [photo];
+    } else {
+      currentGroup.push(photo);
+    }
+  }
+
+  if (currentGroup.length > 0) {
+    mealGroups.push(currentGroup);
+  }
+
+  // Filter groups: must have at least one 'อาหาร' photo
+  const validMealGroups = mealGroups.filter((g) => g.some((p) => p.cat === 'อาหาร'));
+
+  // All places for restaurant / place reuse (DR8)
+  const allPlaces = db
+    .prepare('SELECT id, name, lat, lon, radius_m, type FROM places')
+    .all() as Array<{ id: string; name: string; lat: number | null; lon: number | null; radius_m: number; type: string }>;
+
+  for (const group of validMealGroups) {
+    const photoIds = group.map((p) => p.id);
+
+    // Check if any photo in this group is already in an existing meal suggestion
+    const alreadySuggested = suggestionExists('meal', (p) => {
+      const existingIds = p.photo_ids || [];
+      return photoIds.some((id) => existingIds.includes(id));
+    });
+
+    if (alreadySuggested) continue;
+
+    // Determine centroid GPS of group
+    const gpsPhotos = group.filter((p) => p.lat != null && p.lon != null);
+    let matchedPlace: { id: string; name: string } | null = null;
+
+    if (gpsPhotos.length > 0) {
+      const cLat = gpsPhotos.reduce((s, p) => s + p.lat!, 0) / gpsPhotos.length;
+      const cLon = gpsPhotos.reduce((s, p) => s + p.lon!, 0) / gpsPhotos.length;
+
+      let bestDist = Infinity;
+      for (const place of allPlaces) {
+        if (place.lat != null && place.lon != null) {
+          const distKm = haversine({ lat: cLat, lon: cLon }, { lat: place.lat, lon: place.lon });
+          const distM = distKm * 1000;
+          if (distM <= (place.radius_m || 120)) {
+            // Prefer restaurants, then smallest distance
+            const score = (place.type === 'restaurant' ? 0 : 1000) + distM;
+            if (score < bestDist) {
+              bestDist = score;
+              matchedPlace = { id: place.id, name: place.name };
+            }
+          }
+        }
+      }
+    }
+
+    const firstTakenAt = group[0].taken_at;
+    const mealType = guessMealType(firstTakenAt);
+
+    const mealTypeTh =
+      mealType === 'breakfast'
+        ? 'อาหารเช้า'
+        : mealType === 'lunch'
+        ? 'อาหารกลางวัน'
+        : mealType === 'dinner'
+        ? 'อาหารเย็น'
+        : 'ของว่าง/คาเฟ่';
+
+    const title = matchedPlace
+      ? `บันทึกมื้อ${mealTypeTh}ที่ "${matchedPlace.name}" (${group.length} รูป)`
+      : `บันทึกมื้อ${mealTypeTh}ใหม่ (${group.length} รูป)`;
+
+    const reason = matchedPlace
+      ? `ตรวจพบรูปอาหารและบรรยากาศ ${group.length} รูป ในบริเวณร้าน "${matchedPlace.name}"`
+      : `ตรวจพบรูปอาหารและบรรยากาศ ${group.length} รูป ถ่ายในช่วงเวลาใกล้เคียงกัน (${mealTypeTh})`;
+
+    const payload = {
+      photo_ids: photoIds,
+      photo_count: group.length,
+      place_id: matchedPlace ? matchedPlace.id : null,
+      place_name: matchedPlace ? matchedPlace.name : null,
+      suggested_restaurant: matchedPlace ? matchedPlace.name : null,
+      meal_type: mealType,
+      taken_at: firstTakenAt,
+      event_id: group[0].event_id || null,
+      title,
+      reason,
+    };
+
+    insertStmt.run(genId(), 'meal', JSON.stringify(payload), now);
+    addedCount++;
   }
 
   return { added: addedCount };
