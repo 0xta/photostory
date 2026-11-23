@@ -2,7 +2,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import db, { ftsUpsert } from '../db.js';
 import { runSuggestionScan } from '../workers/suggest.js';
-import { genId } from '../utils.js';
+import { genId, FRIEND_PALETTE } from '../utils.js';
 
 export const suggestionsRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/suggestions
@@ -61,6 +61,9 @@ export const suggestionsRoutes: FastifyPluginAsync = async (app) => {
       meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'cafe' | 'other';
       note?: string;
       rating?: number;
+      person_name?: string;
+      person_id?: string;
+      nick?: string;
     };
   }>('/api/suggestions/:id/accept', async (req, reply) => {
     const sugg = db
@@ -175,6 +178,50 @@ export const suggestionsRoutes: FastifyPluginAsync = async (app) => {
           ? ((db.prepare('SELECT name FROM places WHERE id = ?').get(placeId) as any)?.name || '')
           : '';
         ftsUpsert('meal', mealId, `${mealType} ${placeName} ${note}`);
+      } else if (sugg.kind === 'face_cluster' && payload.cluster_id) {
+        // Accept face cluster naming suggestion (Algorithm 8.4 / AC-18)
+        let personId = req.body?.person_id || payload.person_id || null;
+        const personName = req.body?.person_name || req.body?.restaurant_name || payload.suggested_name;
+
+        if (!personId && personName && personName.trim()) {
+          const cleanName = personName.trim();
+          const existingPerson = db
+            .prepare('SELECT id FROM persons WHERE name = ? LIMIT 1')
+            .get(cleanName) as { id: string } | undefined;
+
+          if (existingPerson) {
+            personId = existingPerson.id;
+          } else {
+            personId = genId();
+            const personCount = (
+              db.prepare('SELECT COUNT(*) as c FROM persons').get() as { c: number }
+            ).c;
+            const assignedColor = FRIEND_PALETTE[personCount % FRIEND_PALETTE.length];
+            db.prepare(`
+              INSERT INTO persons (id, name, nick, note, color, created_at)
+              VALUES (?, ?, ?, '', ?, ?)
+            `).run(personId, cleanName, req.body?.nick || '', assignedColor, now);
+            ftsUpsert('person', personId, cleanName);
+          }
+        }
+
+        if (personId) {
+          // Link faces of this cluster to this person
+          db.prepare('UPDATE faces SET person_id = ? WHERE cluster_id = ?').run(personId, payload.cluster_id);
+
+          // Link member photos to photo_persons with source='face-confirmed' (FR-506 / AC-18)
+          const insertPp = db.prepare(`
+            INSERT OR REPLACE INTO photo_persons (photo_id, person_id, source)
+            VALUES (?, ?, 'face-confirmed')
+          `);
+          const clusterPhotos = db
+            .prepare('SELECT DISTINCT photo_id FROM faces WHERE cluster_id = ?')
+            .all(payload.cluster_id) as Array<{ photo_id: string }>;
+
+          for (const cp of clusterPhotos) {
+            insertPp.run(cp.photo_id, personId);
+          }
+        }
       }
 
       // Mark suggestion as accepted

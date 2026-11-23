@@ -3,6 +3,7 @@ import { genId } from '../utils.js';
 
 export interface JobState {
   id: string;
+  kind?: string;
   status: 'running' | 'done' | 'error';
   processed: number;
   total: number;
@@ -18,10 +19,11 @@ export interface JobState {
 
 const jobs = new Map<string, JobState>();
 
-export function createJob(): JobState {
+export function createJob(kind: string = 'import'): JobState {
   const id = genId();
   const job: JobState = {
     id,
+    kind,
     status: 'running',
     processed: 0,
     total: 0,
@@ -47,9 +49,9 @@ export function updateJob(id: string, updates: Partial<JobState>): JobState | un
   return job;
 }
 
-export function hasActiveJob(): boolean {
+export function hasActiveJob(kind: string = 'import'): boolean {
   for (const job of jobs.values()) {
-    if (job.status === 'running') {
+    if (job.status === 'running' && (job.kind === kind || !job.kind)) {
       return true;
     }
   }

@@ -3,6 +3,7 @@ import db, { getSetting } from '../db.js';
 import { genId, haversine } from '../utils.js';
 import { guessMealType } from '../routes/meals.js';
 import { isMlEnabled, normalizeVector, EMBED_DIM } from './embed.js';
+import { clusterFaces } from './face.js';
 
 interface SuggestionRow {
   id: string;
@@ -479,6 +480,13 @@ export function runSuggestionScan(): { added: number } {
     } catch (err) {
       console.warn('Semantic collection suggestions skipped:', err);
     }
+  }
+
+  // ── Rule 5: Face Clusters (Algorithm 8.4 / Phase 3) ─────────
+  try {
+    const faceRes = clusterFaces();
+  } catch (err) {
+    console.warn('Face clustering suggestion scan skipped:', err);
   }
 
   return { added: addedCount };

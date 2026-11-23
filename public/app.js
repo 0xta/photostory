@@ -622,10 +622,53 @@ async function openPhotoModal(photoId) {
       catsContainer.appendChild(chip);
     });
 
+    // Render unconfirmed face suggestion chips (FR-506 / AC-18)
+    const suggestionsContainer = document.getElementById('photo-modal-face-suggestions');
+    if (suggestionsContainer) {
+      suggestionsContainer.innerHTML = '';
+      const unconfirmedFriends = (photo.friends || []).filter((f) => f.source === 'face-suggestion');
+      if (unconfirmedFriends.length > 0) {
+        suggestionsContainer.style.display = 'block';
+        unconfirmedFriends.forEach((uf) => {
+          const chip = document.createElement('div');
+          chip.className = 'face-suggest-chip';
+          chip.innerHTML = `
+            <span>👤 ${escapeHtml(uf.name)}?</span>
+            <button class="btn-chip-action btn-confirm" title="ยืนยันเพื่อนในรูป">✓</button>
+            <button class="btn-chip-action btn-dismiss" title="ไม่ใช่คนนี้">✕</button>
+          `;
+          chip.querySelector('.btn-confirm').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await api(`/photos/${photo.id}/confirm-face`, {
+              method: 'POST',
+              body: { person_id: uf.id },
+            });
+            showToast(`ยืนยัน ${uf.name} ในรูปนี้แล้ว`, 'success');
+            openPhotoModal(photo.id);
+            loadPhotos();
+            loadPersons();
+          });
+          chip.querySelector('.btn-dismiss').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await api(`/photos/${photo.id}/dismiss-face`, {
+              method: 'POST',
+              body: { person_id: uf.id },
+            });
+            showToast('ละเว้นข้อเสนอแนะแล้ว', 'info');
+            openPhotoModal(photo.id);
+            loadPhotos();
+          });
+          suggestionsContainer.appendChild(chip);
+        });
+      } else {
+        suggestionsContainer.style.display = 'none';
+      }
+    }
+
     // Render friend chips (FR-402)
     const friendsContainer = document.getElementById('photo-modal-friends');
     friendsContainer.innerHTML = '';
-    const taggedPersonIds = new Set((photo.friends || []).map((f) => f.id));
+    const taggedPersonIds = new Set((photo.friends || []).filter((f) => f.source !== 'face-suggestion').map((f) => f.id));
 
     allFriends.forEach((friend) => {
       const isSelected = taggedPersonIds.has(friend.id);
@@ -1295,7 +1338,9 @@ async function loadSuggestions() {
 
       const p = s.payload || {};
       const icon =
-        s.kind === 'collection_create'
+        s.kind === 'face_cluster'
+          ? '👤'
+          : s.kind === 'collection_create'
           ? '✨'
           : s.kind === 'collection_semantic'
           ? '🧠'
@@ -1306,7 +1351,18 @@ async function loadSuggestions() {
           : '📌';
 
       let photosPreview = '';
-      if (s.kind === 'meal' && Array.isArray(p.photo_ids) && p.photo_ids.length > 0) {
+      if (s.kind === 'face_cluster') {
+        const photoIds = Array.isArray(p.photo_ids) ? p.photo_ids : [];
+        photosPreview = `
+          <div style="display: flex; gap: 4px; margin-top: 0.4rem; overflow-x: auto;">
+            ${photoIds.slice(0, 4).map((pid) => `<img src="/api/thumbs/${pid}" style="width: 48px; height: 48px; border-radius: 4px; object-fit: cover; border: 1px solid var(--line);" />`).join('')}
+            ${photoIds.length > 4 ? `<span class="muted mono" style="align-self: center; font-size: 0.75rem; margin-left: 4px;">+${photoIds.length - 4}</span>` : ''}
+          </div>
+          <div style="margin-top: 0.5rem; display: flex; gap: 0.4rem; align-items: center;">
+            <input type="text" id="face-name-input-${s.id}" class="input input-sm" placeholder="พิมพ์ชื่อเพื่อน..." style="max-width: 180px;" value="" />
+          </div>
+        `;
+      } else if (s.kind === 'meal' && Array.isArray(p.photo_ids) && p.photo_ids.length > 0) {
         photosPreview = `
           <div style="display: flex; gap: 4px; margin-top: 0.4rem; overflow-x: auto;">
             ${p.photo_ids.slice(0, 4).map((pid) => `<img src="/api/thumbs/${pid}" style="width: 44px; height: 44px; border-radius: 4px; object-fit: cover;" />`).join('')}
@@ -1343,12 +1399,18 @@ async function loadSuggestions() {
 
 async function acceptSuggestion(id) {
   try {
-    await api(`/suggestions/${id}/accept`, { method: 'POST' });
+    const nameInput = document.getElementById(`face-name-input-${id}`);
+    const body = nameInput && nameInput.value.trim() ? { person_name: nameInput.value.trim() } : {};
+    await api(`/suggestions/${id}/accept`, {
+      method: 'POST',
+      body: Object.keys(body).length > 0 ? body : undefined,
+    });
     showToast('ยอมรับข้อเสนอเรียบร้อย', 'success');
     loadSuggestions();
     loadStories();
     loadPlaces();
     loadMeals();
+    loadPersons();
     updateStatus();
   } catch {
     showToast('ไม่สามารถตอบรับข้อเสนอได้', 'error');
@@ -2164,6 +2226,21 @@ async function init() {
 
   // Add friend button
   document.getElementById('btn-add-friend')?.addEventListener('click', openAddFriendModal);
+
+  // Scan faces button (Phase 3)
+  document.getElementById('btn-scan-faces')?.addEventListener('click', async () => {
+    try {
+      const res = await api('/faces', { method: 'POST' });
+      showToast('กำลังสแกนและจัดกลุ่มใบหน้าในพื้นหลัง...', 'info');
+      pollJob(res.jobId, () => {
+        showToast('ตรวจจับและจัดกลุ่มใบหน้าเรียบร้อยแล้ว', 'success');
+        loadSuggestions();
+        loadFriends();
+      });
+    } catch {
+      showToast('ไม่สามารถเริ่มงานตรวจจับใบหน้าได้', 'error');
+    }
+  });
 
   // Review Queue Jump Buttons (FR-704)
   document.getElementById('btn-jump-dateless')?.addEventListener('click', () => {

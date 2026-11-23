@@ -20,7 +20,7 @@ export const personsRoutes: FastifyPluginAsync = async (app) => {
           COUNT(DISTINCT pp.photo_id) as photo_count,
           COUNT(DISTINCT p.event_id) as event_count
         FROM persons pr
-        LEFT JOIN photo_persons pp ON pr.id = pp.person_id
+        LEFT JOIN photo_persons pp ON pr.id = pp.person_id AND pp.source != 'face-suggestion'
         LEFT JOIN photos p ON pp.photo_id = p.id AND p.event_id IS NOT NULL
         GROUP BY pr.id
         ORDER BY photo_count DESC, pr.name ASC
@@ -75,7 +75,7 @@ export const personsRoutes: FastifyPluginAsync = async (app) => {
           MAX(p.taken_at) as last_met
         FROM photo_persons pp
         JOIN photos p ON pp.photo_id = p.id
-        WHERE pp.person_id = ? AND p.taken_at IS NOT NULL
+        WHERE pp.person_id = ? AND pp.source != 'face-suggestion' AND p.taken_at IS NOT NULL
       `)
       .get(person.id) as any;
 
@@ -88,12 +88,12 @@ export const personsRoutes: FastifyPluginAsync = async (app) => {
             SELECT COUNT(*)
             FROM photos p2
             JOIN photo_persons pp2 ON p2.id = pp2.photo_id
-            WHERE p2.event_id = e.id AND pp2.person_id = ?
+            WHERE p2.event_id = e.id AND pp2.person_id = ? AND pp2.source != 'face-suggestion'
           ) as photo_count
         FROM events e
         JOIN photos p ON e.id = p.event_id
         JOIN photo_persons pp ON p.id = pp.photo_id
-        WHERE pp.person_id = ?
+        WHERE pp.person_id = ? AND pp.source != 'face-suggestion'
         ORDER BY e.ts_start ASC
       `)
       .all(person.id, person.id) as any[];
@@ -114,7 +114,7 @@ export const personsRoutes: FastifyPluginAsync = async (app) => {
         SELECT p.id, p.filename, p.taken_at, p.lat, p.lon, p.burst, p.event_id, p.note
         FROM photos p
         JOIN photo_persons pp ON p.id = pp.photo_id
-        WHERE pp.person_id = ?
+        WHERE pp.person_id = ? AND pp.source != 'face-suggestion'
         ORDER BY p.taken_at ASC
       `)
       .all(person.id);

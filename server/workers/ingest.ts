@@ -206,7 +206,7 @@ export async function processIngest(jobId: string, filePaths: string[]): Promise
   }
 
   // Auto-run embedding job for newly added photos (Phase 2, Section 9.3)
-  if (added > 0) {
+  if (added > 0 && process.env.NODE_ENV !== 'test') {
     try {
       startEmbedJob();
     } catch (embedErr) {

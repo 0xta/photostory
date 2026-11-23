@@ -689,6 +689,34 @@ body {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
+.face-suggest-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px dashed #f59e0b;
+  color: #fbbf24;
+  padding: 3px 10px;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  margin-right: 6px;
+  margin-bottom: 6px;
+}
+.btn-chip-action {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 3px;
+  font-weight: bold;
+  font-size: 0.85rem;
+}
+.btn-chip-action.btn-confirm {
+  color: #10b981;
+}
+.btn-chip-action.btn-dismiss {
+  color: #ef4444;
+}
+
 /* ── Modals & Overlay Layouts ─────────────────────────────── */
 .modal-backdrop {
   position: fixed;

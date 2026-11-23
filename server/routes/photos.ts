@@ -160,7 +160,7 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
     // Enrich items with cats and friends
     const getCatsStmt = db.prepare('SELECT cat FROM photo_cats WHERE photo_id = ?');
     const getPersonsStmt = db.prepare(`
-      SELECT pr.id, pr.name, pr.nick, pr.color
+      SELECT pr.id, pr.name, pr.nick, pr.color, pp.source
       FROM photo_persons pp
       JOIN persons pr ON pp.person_id = pr.id
       WHERE pp.photo_id = ?
@@ -397,11 +397,20 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
     ).map((r) => r.cat);
 
     const friends = db.prepare(`
-      SELECT pr.id, pr.name, pr.nick, pr.color
+      SELECT pr.id, pr.name, pr.nick, pr.color, pp.source
       FROM photo_persons pp
       JOIN persons pr ON pp.person_id = pr.id
       WHERE pp.photo_id = ?
     `).all(photo.id);
+
+    const faces = db
+      .prepare(`
+        SELECT f.id, f.bbox, f.cluster_id, f.person_id, p.name as person_name
+        FROM faces f
+        LEFT JOIN persons p ON f.person_id = p.id
+        WHERE f.photo_id = ?
+      `)
+      .all(photo.id);
 
     let event: any = null;
     if (photo.event_id) {
@@ -428,7 +437,7 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
       `)
       .get(photo.id);
 
-    return { ...photo, cats, friends, event, places, meal: meal || null };
+    return { ...photo, cats, friends, faces, event, places, meal: meal || null };
   });
 
   // PATCH /api/photos/:id (note, taken_at, lat, lon)
