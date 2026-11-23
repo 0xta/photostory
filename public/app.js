@@ -72,10 +72,21 @@ const photoFilters = {
 // ── API Helper ───────────────────────────────────────────────
 async function api(path, opts = {}) {
   const url = `${API}${path}`;
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...opts.headers },
-    ...opts,
-  });
+  const options = { ...opts };
+  const headers = { ...options.headers };
+
+  if (options.body !== undefined && options.body !== null) {
+    if (typeof options.body === 'object' && !(options.body instanceof FormData)) {
+      options.body = JSON.stringify(options.body);
+    }
+    if (!headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+  } else {
+    delete headers['Content-Type'];
+  }
+
+  const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
@@ -1411,10 +1422,11 @@ async function loadSuggestions() {
 async function acceptSuggestion(id) {
   try {
     const nameInput = document.getElementById(`face-name-input-${id}`);
-    const body = nameInput && nameInput.value.trim() ? { person_name: nameInput.value.trim() } : {};
+    const nameVal = nameInput ? nameInput.value.trim() : '';
+    const body = nameVal ? { person_name: nameVal } : {};
     await api(`/suggestions/${id}/accept`, {
       method: 'POST',
-      body: Object.keys(body).length > 0 ? body : undefined,
+      body,
     });
     showToast('ยอมรับข้อเสนอเรียบร้อย', 'success');
     loadSuggestions();
@@ -1423,8 +1435,9 @@ async function acceptSuggestion(id) {
     loadMeals();
     loadPersons();
     updateStatus();
-  } catch {
-    showToast('ไม่สามารถตอบรับข้อเสนอได้', 'error');
+  } catch (err) {
+    console.error('Accept suggestion error:', err);
+    showToast(err.message || 'ไม่สามารถตอบรับข้อเสนอได้', 'error');
   }
 }
 
@@ -1433,8 +1446,9 @@ async function dismissSuggestion(id) {
     await api(`/suggestions/${id}/dismiss`, { method: 'POST' });
     showToast('ข้ามข้อเสนอนี้แล้ว (จะไม่แนะนำซ้ำ)', 'info');
     loadSuggestions();
-  } catch {
-    showToast('ไม่สามารถข้ามข้อเสนอได้', 'error');
+  } catch (err) {
+    console.error('Dismiss suggestion error:', err);
+    showToast(err.message || 'ไม่สามารถข้ามข้อเสนอได้', 'error');
   }
 }
 
