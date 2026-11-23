@@ -1,7 +1,6 @@
 // server/workers/embed.ts — Multilingual CLIP Semantic Embeddings & Search (Phase 2, Section 8.5/9.3)
 import fs from 'node:fs';
 import path from 'node:path';
-import sharp from 'sharp';
 import db, { THUMBS_DIR, getSetting, getSettingNum } from '../db.js';
 import { createJob, updateJob } from './jobs.js';
 
@@ -15,15 +14,31 @@ const CONCEPT_ANCHORS: Record<string, number[]> = {
   travel: [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45],
   // People & Friends
   friends: [50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65],
-  // Atmosphere & Interior & Condo
+  // Atmosphere & Interior & Condo decoration
   atmosphere: [70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85],
-  // Work, slides, tech
+  // Work, slides, tech, documents
   work: [90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105],
   // Architecture & Buildings
   architecture: [110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125],
+  // Vehicles & Street
+  vehicle: [130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145],
+  // Animals & Pets
+  pet: [150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165],
 };
 
+const CLIP_CONCEPTS: Array<{ concept: keyof typeof CONCEPT_ANCHORS; label: string }> = [
+  { concept: 'food', label: 'food, meal, dish, snack, coffee or drink' },
+  { concept: 'atmosphere', label: 'indoor room, living room, bedroom, condo decoration or furniture' },
+  { concept: 'work', label: 'document, text, presentation slide, screen or diagram' },
+  { concept: 'travel', label: 'nature, landscape, beach, ocean, mountain, sky or outdoor view' },
+  { concept: 'friends', label: 'portrait of a person, people or selfie' },
+  { concept: 'vehicle', label: 'car, vehicle, street or traffic' },
+  { concept: 'pet', label: 'cat, dog, bird or animal pet' },
+  { concept: 'architecture', label: 'building exterior, architecture or temple' },
+];
+
 const THAI_CONCEPT_MAP: Record<string, keyof typeof CONCEPT_ANCHORS> = {
+  // Food
   อาหาร: 'food',
   กิน: 'food',
   ข้าว: 'food',
@@ -34,12 +49,16 @@ const THAI_CONCEPT_MAP: Record<string, keyof typeof CONCEPT_ANCHORS> = {
   เครื่องดื่ม: 'food',
   คาเฟ่: 'food',
   มื้อ: 'food',
+  ชาบู: 'food',
+  ปิ้งย่าง: 'food',
+  ของหวาน: 'food',
   food: 'food',
   drink: 'food',
   cafe: 'food',
   coffee: 'food',
   dish: 'food',
 
+  // Travel / Nature
   เที่ยว: 'travel',
   ทริป: 'travel',
   เดินทาง: 'travel',
@@ -47,47 +66,114 @@ const THAI_CONCEPT_MAP: Record<string, keyof typeof CONCEPT_ANCHORS> = {
   ภูเขา: 'travel',
   เชียงใหม่: 'travel',
   วิว: 'travel',
+  ธรรมชาติ: 'travel',
+  ชายหาด: 'travel',
+  เกาะ: 'travel',
+  ป่า: 'travel',
+  น้ำตก: 'travel',
+  ท้องฟ้า: 'travel',
+  พระอาทิตย์: 'travel',
   travel: 'travel',
   trip: 'travel',
   vacation: 'travel',
+  beach: 'travel',
+  nature: 'travel',
 
+  // Friends / People
   เพื่อน: 'friends',
   คน: 'friends',
   สังสรรค์: 'friends',
   เซลฟี่: 'friends',
   ตัวฉัน: 'friends',
+  ใบหน้า: 'friends',
   friend: 'friends',
   people: 'friends',
   selfie: 'friends',
+  person: 'friends',
 
+  // Atmosphere / Room / Condo
   บรรยากาศ: 'atmosphere',
   ห้อง: 'atmosphere',
   คอนโด: 'atmosphere',
   ตกแต่ง: 'atmosphere',
   โต๊ะ: 'atmosphere',
   บ้าน: 'atmosphere',
+  เตียง: 'atmosphere',
+  โซฟา: 'atmosphere',
+  เฟอร์นิเจอร์: 'atmosphere',
+  ภายใน: 'atmosphere',
   room: 'atmosphere',
   decor: 'atmosphere',
   interior: 'atmosphere',
+  condo: 'atmosphere',
 
+  // Work / Slides / Presentation / Document
   สไลด์: 'work',
   งาน: 'work',
   สัมมนา: 'work',
   ประชุม: 'work',
   บรรยาย: 'work',
   เทคโนโลยี: 'work',
+  เอกสาร: 'work',
+  ข้อความ: 'work',
+  ตัวหนังสือ: 'work',
+  หน้าจอ: 'work',
+  คอม: 'work',
+  นำเสนอ: 'work',
   okr: 'work',
   slide: 'work',
   presentation: 'work',
   conference: 'work',
+  document: 'work',
+  tech: 'work',
 
+  // Vehicles / Street
+  รถ: 'vehicle',
+  รถยนต์: 'vehicle',
+  ถนน: 'vehicle',
+  มอเตอร์ไซค์: 'vehicle',
+  การเดินทาง: 'vehicle',
+  car: 'vehicle',
+  vehicle: 'vehicle',
+  street: 'vehicle',
+
+  // Pets
+  แมว: 'pet',
+  หมา: 'pet',
+  สุนัข: 'pet',
+  สัตว์: 'pet',
+  สัตว์เลี้ยง: 'pet',
+  cat: 'pet',
+  dog: 'pet',
+  pet: 'pet',
+
+  // Architecture
   ตึก: 'architecture',
   อาคาร: 'architecture',
   สถาปัตยกรรม: 'architecture',
   วัด: 'architecture',
+  โบสถ์: 'architecture',
   building: 'architecture',
   architecture: 'architecture',
+  temple: 'architecture',
 };
+
+// Cached Transformers.js CLIP zero-shot image classifier
+let classifierPromise: Promise<any> | null = null;
+async function getClassifier() {
+  if (!classifierPromise) {
+    classifierPromise = (async () => {
+      try {
+        const { pipeline } = await import('@huggingface/transformers');
+        return await pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32');
+      } catch (err) {
+        console.warn('[embed] Failed to load CLIP model; falling back to metadata projection:', err);
+        return null;
+      }
+    })();
+  }
+  return classifierPromise;
+}
 
 /**
  * Normalizes a Float32Array to unit length (L2 norm = 1.0)
@@ -116,8 +202,10 @@ function projectToken(token: string, target: Float32Array, weight = 1.0) {
   for (const [kw, concept] of Object.entries(THAI_CONCEPT_MAP)) {
     if (lower.includes(kw)) {
       const indices = CONCEPT_ANCHORS[concept];
-      for (const idx of indices) {
-        target[idx] += 2.5 * weight;
+      if (indices) {
+        for (const idx of indices) {
+          target[idx] += 3.0 * weight;
+        }
       }
     }
   }
@@ -160,14 +248,14 @@ export async function embedText(text: string): Promise<Float32Array> {
     projectToken(tok, vec, 1.0);
   }
 
-  // Also evaluate entire string for multi-word matches (e.g. "รูปอาหารตอนกลางคืน")
+  // Also evaluate entire string for multi-word matches
   projectToken(text, vec, 1.5);
 
   return normalizeVector(vec);
 }
 
 /**
- * Encodes a photo into a 512-d normalized vector (Algorithm 8.5 / 9.3)
+ * Encodes a photo into a 512-d normalized vector using real CLIP visual classification (Algorithm 8.5 / 9.3)
  */
 export async function embedPhoto(photoId: string): Promise<Float32Array> {
   const vec = new Float32Array(EMBED_DIM);
@@ -188,7 +276,7 @@ export async function embedPhoto(photoId: string): Promise<Float32Array> {
     return vec;
   }
 
-  // 2. Fetch categories
+  // 2. Fetch user categories if any
   const cats = db
     .prepare('SELECT cat FROM photo_cats WHERE photo_id = ?')
     .all(photoId) as Array<{ cat: string }>;
@@ -198,36 +286,34 @@ export async function embedPhoto(photoId: string): Promise<Float32Array> {
   }
 
   // 3. Project notes, filename, and event details
-  if (photo.filename) projectToken(photo.filename, vec, 0.8);
+  if (photo.filename) projectToken(photo.filename, vec, 0.4);
   if (photo.note) projectToken(photo.note, vec, 1.5);
   if (photo.event_name) projectToken(photo.event_name, vec, 1.2);
   if (photo.event_place) projectToken(photo.event_place, vec, 1.2);
 
-  // 4. Extract visual features from thumbnail if present
+  // 4. Real CLIP Visual Classification from Thumbnail
   const thumbPath = path.join(THUMBS_DIR, `${photoId}.jpg`);
   if (fs.existsSync(thumbPath)) {
     try {
-      const stats = await sharp(thumbPath).stats();
-      if (stats && stats.channels) {
-        // Embed RGB color channels into visual dimension range [200..230]
-        const r = stats.channels[0]?.mean ?? 128;
-        const g = stats.channels[1]?.mean ?? 128;
-        const b = stats.channels[2]?.mean ?? 128;
-
-        vec[200] += (r - 128) / 128;
-        vec[201] += (g - 128) / 128;
-        vec[202] += (b - 128) / 128;
-
-        // Warm food/interior detection (higher red & green)
-        if (r > b + 20) {
-          projectToken('food', vec, 0.5);
-        }
-        // Blue/cyan outdoor/travel detection
-        if (b > r + 15) {
-          projectToken('travel', vec, 0.5);
+      const classifier = await getClassifier();
+      if (classifier) {
+        const candidateLabels = CLIP_CONCEPTS.map((c) => c.label);
+        const results = await classifier(thumbPath, candidateLabels);
+        for (const item of results) {
+          if (item.score > 0.08) {
+            const found = CLIP_CONCEPTS.find((c) => c.label === item.label);
+            if (found && CONCEPT_ANCHORS[found.concept]) {
+              const indices = CONCEPT_ANCHORS[found.concept];
+              for (const idx of indices) {
+                vec[idx] += item.score * 5.0;
+              }
+            }
+          }
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn(`[embed] Visual classification failed for ${photoId}:`, err);
+    }
   }
 
   // 5. Ensure non-zero vector and normalize
@@ -263,7 +349,7 @@ export async function embedPhoto(photoId: string): Promise<Float32Array> {
 export function searchSimilarPhotos(
   queryEmb: Float32Array,
   k = 60,
-  minSimilarity = 0.15
+  minSimilarity = 0.25
 ): Array<{ photo_id: string; score: number }> {
   try {
     const rows = db
@@ -317,8 +403,8 @@ export function startEmbedJob(photoIds?: string[]): { jobId: string } {
 
         updateJob(job.id, { processed: i + 1, added: i + 1 });
 
-        // Cooperative yield every 10 photos (NFR-4)
-        if (i % 10 === 0) {
+        // Cooperative yield every 5 photos (NFR-4)
+        if (i % 5 === 0) {
           await new Promise((resolve) => setImmediate(resolve));
         }
       }

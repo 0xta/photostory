@@ -5,9 +5,14 @@ import { startEmbedJob, isMlEnabled } from '../workers/embed.js';
 
 export const embedRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/embed (FR-603 / Section 7)
-  app.post<{ Body: { photo_ids?: string[] } }>('/api/embed', async (req) => {
-    const { photo_ids } = req.body || {};
-    const { jobId } = startEmbedJob(photo_ids);
+  app.post<{ Body: { photo_ids?: string[]; force?: boolean } }>('/api/embed', async (req) => {
+    const { photo_ids, force } = req.body || {};
+    let targets = photo_ids;
+    if (force) {
+      const all = db.prepare('SELECT id FROM photos').all() as Array<{ id: string }>;
+      targets = all.map((p) => p.id);
+    }
+    const { jobId } = startEmbedJob(targets);
     return { jobId };
   });
 
