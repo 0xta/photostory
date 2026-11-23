@@ -325,13 +325,17 @@ export function emitFaceClusterSuggestions(clusters: FaceCluster[]): number {
     // Suggest naming only if cluster has no assigned person and not already suggested/dismissed
     if (!cluster.person_id && !activeClusterIds.has(cluster.id)) {
       const suggId = genId();
+      const faceCount = cluster.photo_ids.length || cluster.count;
+      const groupName = `เพื่อนกลุ่ม #${idx + 1}`;
       const payload = {
+        title: `พบกลุ่มใบหน้า "${groupName}" (${faceCount} รูป)`,
+        reason: `ตรวจพบใบหน้าบุคคลเดียวกันในรูปภาพ ${faceCount} รูป กรุณาพิมพ์ชื่อเพื่อนแล้วกดยอมรับเพื่อจัดเก็บความสัมพันธ์`,
         cluster_id: cluster.id,
         face_count: cluster.count,
         photo_count: cluster.photo_ids.length,
         photo_ids: cluster.photo_ids.slice(0, 10),
         representative_face_id: cluster.representative_face_id,
-        suggested_name: `เพื่อนกลุ่ม #${idx + 1}`,
+        suggested_name: groupName,
       };
 
       try {

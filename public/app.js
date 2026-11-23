@@ -1378,11 +1378,22 @@ async function loadSuggestions() {
         `;
       }
 
+      const title =
+        p.title ||
+        (s.kind === 'face_cluster'
+          ? `พบกลุ่มใบหน้า "${p.suggested_name || 'เพื่อน'}" (${p.photo_count || p.face_count || 0} รูป)`
+          : 'ข้อเสนอแนะ');
+      const reason =
+        p.reason ||
+        (s.kind === 'face_cluster'
+          ? `ตรวจพบใบหน้าบุคคลเดียวกันในรูปภาพ ${p.photo_count || p.face_count || 0} รูป พิมพ์ชื่อเพื่อนเพื่อเชื่อมโยงเข้าคลังรูปภาพ`
+          : '');
+
       card.innerHTML = `
         <div class="suggestion-icon">${icon}</div>
         <div class="suggestion-content">
-          <div class="suggestion-title">${escapeHtml(p.title || 'ข้อเสนอแนะ')}</div>
-          <div class="suggestion-reason">${escapeHtml(p.reason || '')}</div>
+          <div class="suggestion-title">${escapeHtml(title)}</div>
+          <div class="suggestion-reason">${escapeHtml(reason)}</div>
           ${photosPreview}
         </div>
         <div class="suggestion-actions">
