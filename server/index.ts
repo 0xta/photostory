@@ -21,6 +21,7 @@ import { placesRoutes } from './routes/places.js';
 import { mealsRoutes } from './routes/meals.js';
 import { recapsRoutes } from './routes/recaps.js';
 import { embedRoutes } from './routes/embed.js';
+import { startEmbedJob } from './workers/embed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -76,6 +77,19 @@ const start = async () => {
     console.log(`\n🎞️  เรื่องราว 2026 — running at http://127.0.0.1:${PORT}`);
     console.log(`📁  Database: data/story.db`);
     console.log(`🖼️  Thumbnails: data/thumbs/\n`);
+
+    // Auto-embed any unembedded photos in background
+    try {
+      const unindexed = db
+        .prepare('SELECT COUNT(*) as c FROM photos WHERE id NOT IN (SELECT photo_id FROM photo_vec)')
+        .get() as { c: number };
+      if (unindexed && unindexed.c > 0) {
+        console.log(`✨ [startup] Found ${unindexed.c} unembedded photos; starting background embedding...`);
+        startEmbedJob();
+      }
+    } catch (embErr) {
+      console.warn('Startup embedding check skipped:', embErr);
+    }
   } catch (err) {
     app.log.error(err);
     process.exit(1);

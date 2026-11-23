@@ -9,6 +9,7 @@ import db, { THUMBS_DIR, ftsUpsert } from '../db.js';
 import { genId, parseDateFromFilename } from '../utils.js';
 import { updateJob, JobState } from './jobs.js';
 import { runClustering } from './cluster.js';
+import { startEmbedJob } from './embed.js';
 
 const VALID_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
@@ -202,6 +203,15 @@ export async function processIngest(jobId: string, filePaths: string[]): Promise
     runClustering();
   } catch (clusterErr) {
     console.error('Error during auto-clustering after ingest:', clusterErr);
+  }
+
+  // Auto-run embedding job for newly added photos (Phase 2, Section 9.3)
+  if (added > 0) {
+    try {
+      startEmbedJob();
+    } catch (embedErr) {
+      console.error('Error starting auto-embed job after ingest:', embedErr);
+    }
   }
 
   updateJob(jobId, {

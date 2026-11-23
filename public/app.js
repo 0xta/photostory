@@ -1936,6 +1936,19 @@ async function init() {
   }
   updateMlButtonLabel();
 
+  async function checkEmbedStatus() {
+    try {
+      const stats = await api('/embed/stats');
+      if (stats.pending > 0) {
+        if (mlLabel) mlLabel.textContent = `ประมวลผล (${stats.embedded_photos}/${stats.total_photos})`;
+        setTimeout(checkEmbedStatus, 3000);
+      } else {
+        updateMlButtonLabel();
+      }
+    } catch {}
+  }
+  checkEmbedStatus();
+
   mlBtn?.addEventListener('click', async () => {
     const cur = settings.ml_enabled !== '0';
     const next = cur ? '0' : '1';
