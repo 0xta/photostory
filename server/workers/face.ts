@@ -2,11 +2,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import db, { getSettingNum, ftsUpsert } from '../db.js';
+import ort from 'onnxruntime-node';
+import db, { getSettingNum } from '../db.js';
 import { createJob, updateJob } from './jobs.js';
 import { genId } from '../utils.js';
 
-export const FACE_EMBED_DIM = 128;
+export const FACE_EMBED_DIM = 512;
 
 export interface FaceBBox {
   x: number; // 0..1 normalized
@@ -32,6 +33,59 @@ export interface FaceCluster {
   photo_ids: string[];
   representative_face_id: string;
   person_id?: string;
+}
+
+// ── Models Management ─────────────────────────────────────────
+const MODELS_DIR = path.join(process.cwd(), 'data', 'models', 'faces');
+const DET_MODEL_PATH = path.join(MODELS_DIR, 'det.onnx');
+const REC_MODEL_PATH = path.join(MODELS_DIR, 'rec.onnx');
+
+const DET_URL = 'https://huggingface.co/immich-app/buffalo_s/resolve/main/detection/model.onnx';
+const REC_URL = 'https://huggingface.co/immich-app/buffalo_s/resolve/main/recognition/model.onnx';
+
+let detSession: ort.InferenceSession | null = null;
+let recSession: ort.InferenceSession | null = null;
+let modelInitPromise: Promise<{ det: ort.InferenceSession; rec: ort.InferenceSession } | null> | null = null;
+
+async function downloadFileIfMissing(url: string, dest: string): Promise<void> {
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 1000000) {
+    return;
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to download model from ${url}: HTTP ${res.status}`);
+  }
+  const buf = await res.arrayBuffer();
+  fs.writeFileSync(dest, Buffer.from(buf));
+}
+
+export async function getFaceModels(): Promise<{ det: ort.InferenceSession; rec: ort.InferenceSession } | null> {
+  if (detSession && recSession) {
+    return { det: detSession, rec: recSession };
+  }
+  if (!modelInitPromise) {
+    modelInitPromise = (async () => {
+      try {
+        await downloadFileIfMissing(DET_URL, DET_MODEL_PATH);
+        await downloadFileIfMissing(REC_URL, REC_MODEL_PATH);
+
+        detSession = await ort.InferenceSession.create(DET_MODEL_PATH, {
+          executionProviders: ['cpu'],
+          graphOptimizationLevel: 'all',
+        });
+        recSession = await ort.InferenceSession.create(REC_MODEL_PATH, {
+          executionProviders: ['cpu'],
+          graphOptimizationLevel: 'all',
+        });
+        return { det: detSession, rec: recSession };
+      } catch (err) {
+        console.warn('[faces] Failed to load InsightFace ONNX models; using fallback:', err);
+        return null;
+      }
+    })();
+  }
+  return modelInitPromise;
 }
 
 // ── Math Helpers ──────────────────────────────────────────────
@@ -64,11 +118,42 @@ export function normalizeVector(v: Float32Array | number[]): Float32Array {
   return res;
 }
 
-// ── Face Detection & Embedding for a Photo ────────────────────
+// Non-Maximum Suppression (NMS)
+interface RawBox {
+  score: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+function nms(boxes: RawBox[], iouThreshold = 0.4): RawBox[] {
+  boxes.sort((a, b) => b.score - a.score);
+  const selected: RawBox[] = [];
+  while (boxes.length > 0) {
+    const current = boxes.shift()!;
+    selected.push(current);
+    boxes = boxes.filter((box) => {
+      const x1 = Math.max(current.x1, box.x1);
+      const y1 = Math.max(current.y1, box.y1);
+      const x2 = Math.min(current.x2, box.x2);
+      const y2 = Math.min(current.y2, box.y2);
+      const w = Math.max(0, x2 - x1);
+      const h = Math.max(0, y2 - y1);
+      const inter = w * h;
+      const area1 = (current.x2 - current.x1) * (current.y2 - current.y1);
+      const area2 = (box.x2 - box.x1) * (box.y2 - box.y1);
+      const union = area1 + area2 - inter;
+      return union > 0 ? inter / union < iouThreshold : true;
+    });
+  }
+  return selected;
+}
+
+// ── Face Detection & ArcFace Embedding for a Photo ─────────────
 /**
- * Detect faces in an image file. Uses sharp to analyze color, skin tone regions,
- * and high-frequency edge characteristics, and computes a 128-d normalized embedding.
- * Supports mocking / manual faces for deterministic tests.
+ * Detect faces in an image file using InsightFace SCRFD and compute 512-d ArcFace embeddings.
+ * Supports multiple faces per photo cleanly (1 photo -> N faces).
  */
 export async function detectFacesInPhoto(photoId: string, filePath: string): Promise<DetectedFace[]> {
   if (!fs.existsSync(filePath)) {
@@ -76,101 +161,150 @@ export async function detectFacesInPhoto(photoId: string, filePath: string): Pro
   }
 
   try {
-    const meta = await sharp(filePath).metadata();
-    const width = meta.width || 1000;
-    const height = meta.height || 1000;
+    const models = await getFaceModels();
+    if (!models) {
+      return [];
+    }
 
-    // Read resized RGB buffer for fast skin-tone and facial symmetry analysis
-    const sampleW = 160;
-    const sampleH = 160;
-    const rawBuffer = await sharp(filePath)
-      .resize(sampleW, sampleH, { fit: 'fill' })
+    const { det, rec } = models;
+    const meta = await sharp(filePath).metadata();
+    const origW = meta.width || 1000;
+    const origH = meta.height || 1000;
+
+    // SCRFD expects 640x640 with black letterboxing
+    const targetW = 640;
+    const targetH = 640;
+    const scale = Math.min(targetW / origW, targetH / origH);
+    const scaledW = Math.round(origW * scale);
+    const scaledH = Math.round(origH * scale);
+    const padX = (targetW - scaledW) / 2;
+    const padY = (targetH - scaledH) / 2;
+
+    const { data } = await sharp(filePath)
+      .resize(targetW, targetH, { fit: 'contain', background: { r: 0, g: 0, b: 0 } })
       .removeAlpha()
       .raw()
-      .toBuffer();
+      .toBuffer({ resolveWithObject: true });
 
-    // Analyze skin-tone color distribution (YCbCr / normalized RGB)
-    let skinPixels = 0;
-    let sumX = 0;
-    let sumY = 0;
-    let minX = sampleW;
-    let maxX = 0;
-    let minY = sampleH;
-    let maxY = 0;
+    // Normalize CHW: (pixel - 127.5) / 128.0
+    const inputData = new Float32Array(3 * targetW * targetH);
+    for (let i = 0; i < targetW * targetH; i++) {
+      inputData[i] = (data[i * 3] - 127.5) / 128.0;
+      inputData[targetW * targetH + i] = (data[i * 3 + 1] - 127.5) / 128.0;
+      inputData[2 * targetW * targetH + i] = (data[i * 3 + 2] - 127.5) / 128.0;
+    }
 
-    // Seeded feature accumulator for 128-d face embedding
-    const features = new Float32Array(FACE_EMBED_DIM);
+    const tensor = new ort.Tensor('float32', inputData, [1, 3, targetH, targetW]);
+    const out = await det.run({ 'input.1': tensor });
 
-    for (let y = 0; y < sampleH; y++) {
-      for (let x = 0; x < sampleW; x++) {
-        const idx = (y * sampleW + x) * 3;
-        const r = rawBuffer[idx];
-        const g = rawBuffer[idx + 1];
-        const b = rawBuffer[idx + 2];
+    // SCRFD strides: 8, 16, 32
+    const strides = [
+      { stride: 8, scoreKey: '443', bboxKey: '446' },
+      { stride: 16, scoreKey: '468', bboxKey: '471' },
+      { stride: 32, scoreKey: '493', bboxKey: '496' },
+    ];
 
-        // Standard skin tone heuristic in RGB: R > 95, G > 40, B > 20, max-min > 15, |R-G| > 15, R > G, R > B
-        const isSkin =
-          r > 95 &&
-          g > 40 &&
-          b > 20 &&
-          Math.max(r, g, b) - Math.min(r, g, b) > 15 &&
-          Math.abs(r - g) > 15 &&
-          r > g &&
-          r > b;
+    const scoreThreshold = 0.5;
+    const candidates: RawBox[] = [];
 
-        if (isSkin) {
-          skinPixels++;
-          sumX += x;
-          sumY += y;
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
+    for (const { stride, scoreKey, bboxKey } of strides) {
+      if (!out[scoreKey] || !out[bboxKey]) continue;
+      const scores = out[scoreKey].data as Float32Array;
+      const bboxes = out[bboxKey].data as Float32Array;
+      const featH = targetH / stride;
+      const featW = targetW / stride;
 
-          // Distribute color & position hash across 128-d vector
-          const bucket = (x * 17 + y * 31 + r) % FACE_EMBED_DIM;
-          features[bucket] += (r - g) / 255.0;
-          const bucket2 = (bucket + 64) % FACE_EMBED_DIM;
-          features[bucket2] += (g - b) / 255.0;
+      for (let y = 0; y < featH; y++) {
+        for (let x = 0; x < featW; x++) {
+          for (let a = 0; a < 2; a++) {
+            const idx = (y * featW + x) * 2 + a;
+            const score = scores[idx];
+            if (score >= scoreThreshold) {
+              const cx = x * stride;
+              const cy = y * stride;
+              const l = bboxes[idx * 4];
+              const t = bboxes[idx * 4 + 1];
+              const r = bboxes[idx * 4 + 2];
+              const b = bboxes[idx * 4 + 3];
+
+              const x1 = Math.max(0, (cx - l * stride - padX) / scale);
+              const y1 = Math.max(0, (cy - t * stride - padY) / scale);
+              const x2 = Math.min(origW, (cx + r * stride - padX) / scale);
+              const y2 = Math.min(origH, (cy + b * stride - padY) / scale);
+
+              // Minimum face dimension: at least 25 pixels
+              if (x2 - x1 >= 25 && y2 - y1 >= 25) {
+                candidates.push({ score, x1, y1, x2, y2 });
+              }
+            }
+          }
         }
       }
     }
 
-    const skinRatio = skinPixels / (sampleW * sampleH);
+    const finalBoxes = nms(candidates);
+    if (finalBoxes.length === 0) {
+      return [];
+    }
 
-    // If skin region forms a plausible face cluster (between 2% and 45% of image area)
-    if (skinRatio >= 0.02 && skinRatio <= 0.45 && maxX > minX && maxY > minY) {
-      const faceW = Math.max(0.15, (maxX - minX) / sampleW);
-      const faceH = Math.max(0.15, (maxY - minY) / sampleH);
-      const faceX = Math.max(0, Math.min(1 - faceW, (sumX / skinPixels) / sampleW - faceW / 2));
-      const faceY = Math.max(0, Math.min(1 - faceH, (sumY / skinPixels) / sampleH - faceH / 2));
+    const detectedFaces: DetectedFace[] = [];
 
-      // Add spatial and texture signature to embedding
-      for (let i = 0; i < FACE_EMBED_DIM; i++) {
-        features[i] += Math.sin((i + 1) * faceX * Math.PI) * 0.5;
-        features[(i + 32) % FACE_EMBED_DIM] += Math.cos((i + 1) * faceY * Math.PI) * 0.5;
-      }
+    for (const box of finalBoxes) {
+      const boxW = box.x2 - box.x1;
+      const boxH = box.y2 - box.y1;
 
-      const normalized = normalizeVector(features);
+      // Expand margin by 10% for facial context
+      const marginX = boxW * 0.1;
+      const marginY = boxH * 0.1;
 
-      return [
-        {
+      const left = Math.max(0, Math.round(box.x1 - marginX));
+      const top = Math.max(0, Math.round(box.y1 - marginY));
+      const right = Math.min(origW, Math.round(box.x2 + marginX));
+      const bottom = Math.min(origH, Math.round(box.y2 + marginY));
+      const width = Math.max(1, right - left);
+      const height = Math.max(1, bottom - top);
+
+      try {
+        const cropped = await sharp(filePath)
+          .extract({ left, top, width, height })
+          .resize(112, 112, { fit: 'fill' })
+          .removeAlpha()
+          .raw()
+          .toBuffer();
+
+        // MobileFaceNet / ArcFace input: [1, 3, 112, 112], (pixel - 127.5) / 127.5
+        const recInput = new Float32Array(3 * 112 * 112);
+        for (let i = 0; i < 112 * 112; i++) {
+          recInput[i] = (cropped[i * 3] - 127.5) / 127.5;
+          recInput[112 * 112 + i] = (cropped[i * 3 + 1] - 127.5) / 127.5;
+          recInput[2 * 112 * 112 + i] = (cropped[i * 3 + 2] - 127.5) / 127.5;
+        }
+
+        const recTensor = new ort.Tensor('float32', recInput, [1, 3, 112, 112]);
+        const recOut = await rec.run({ 'input.1': recTensor });
+        const rawEmb = recOut['516'].data as Float32Array;
+
+        const emb = normalizeVector(rawEmb);
+
+        detectedFaces.push({
           id: genId(),
           photo_id: photoId,
           bbox: {
-            x: Math.round(faceX * 1000) / 1000,
-            y: Math.round(faceY * 1000) / 1000,
-            w: Math.round(faceW * 1000) / 1000,
-            h: Math.round(faceH * 1000) / 1000,
+            x: Math.round((box.x1 / origW) * 1000) / 1000,
+            y: Math.round((box.y1 / origH) * 1000) / 1000,
+            w: Math.round((boxW / origW) * 1000) / 1000,
+            h: Math.round((boxH / origH) * 1000) / 1000,
           },
-          emb: normalized,
-        },
-      ];
+          emb,
+        });
+      } catch (cropErr) {
+        console.warn(`[faces] Failed to crop face in photo ${photoId}:`, cropErr);
+      }
     }
 
-    return [];
+    return detectedFaces;
   } catch (err) {
-    console.warn(`Face detection error on photo ${photoId}:`, err);
+    console.warn(`[faces] Detection error on photo ${photoId}:`, err);
     return [];
   }
 }
@@ -229,8 +363,8 @@ export function clusterFaces(threshold?: number): {
     if (bestClusterIdx >= 0 && bestCosine >= faceCosine) {
       // Add to existing cluster and update centroid (normalize mean of members)
       const target = clusters[bestClusterIdx];
-      const newCentroid = new Float32Array(FACE_EMBED_DIM);
-      for (let i = 0; i < FACE_EMBED_DIM; i++) {
+      const newCentroid = new Float32Array(emb.length);
+      for (let i = 0; i < emb.length; i++) {
         newCentroid[i] = target.centroid[i] * target.count + emb[i];
       }
       target.centroid = normalizeVector(newCentroid);
@@ -292,6 +426,11 @@ export function clusterFaces(threshold?: number): {
     };
   });
 
+  // Sort clusters descending so prominent recurring people come first
+  clusters.sort(
+    (a, b) => (b.photo_ids.length * 100 + b.count) - (a.photo_ids.length * 100 + a.count)
+  );
+
   // Surface unnamed clusters as suggestions in suggestions inbox
   emitFaceClusterSuggestions(fullClusters);
 
@@ -320,8 +459,17 @@ export function emitFaceClusterSuggestions(clusters: FaceCluster[]): number {
   let added = 0;
   const now = Date.now();
 
-  for (let idx = 0; idx < clusters.length; idx++) {
-    const cluster = clusters[idx];
+  const sortedClusters = [...clusters].sort(
+    (a, b) => (b.photo_ids.length * 100 + b.count) - (a.photo_ids.length * 100 + a.count)
+  );
+
+  for (let idx = 0; idx < sortedClusters.length; idx++) {
+    const cluster = sortedClusters[idx];
+    // In larger libraries, prioritize recurring people (>= 2 faces or photos)
+    if (sortedClusters.length > 5 && cluster.count < 2 && cluster.photo_ids.length < 2) {
+      continue;
+    }
+
     // Suggest naming only if cluster has no assigned person and not already suggested/dismissed
     if (!cluster.person_id && !activeClusterIds.has(cluster.id)) {
       const suggId = genId();
@@ -379,9 +527,15 @@ export async function startFaceJob(): Promise<string> {
 
       for (let i = 0; i < total; i++) {
         const p = photos[i];
+        const photoExists = db.prepare('SELECT 1 FROM photos WHERE id = ?').get(p.id);
+        if (!photoExists) continue;
+
         const faces = await detectFacesInPhoto(p.id, p.path);
 
         if (faces.length > 0) {
+          const stillExists = db.prepare('SELECT 1 FROM photos WHERE id = ?').get(p.id);
+          if (!stillExists) continue;
+
           const insertTx = db.transaction(() => {
             for (const f of faces) {
               const embBuf = Buffer.from(f.emb.buffer, f.emb.byteOffset, f.emb.byteLength);
