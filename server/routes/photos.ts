@@ -294,7 +294,16 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
       event = db.prepare('SELECT id, name, place, note, ts_start, ts_end FROM events WHERE id = ?').get(photo.event_id);
     }
 
-    return { ...photo, cats, friends, event };
+    const places = db
+      .prepare(`
+        SELECT pl.id, pl.name, pl.type, pp.source
+        FROM photo_places pp
+        JOIN places pl ON pp.place_id = pl.id
+        WHERE pp.photo_id = ?
+      `)
+      .all(photo.id);
+
+    return { ...photo, cats, friends, event, places };
   });
 
   // PATCH /api/photos/:id (note, taken_at, lat, lon)

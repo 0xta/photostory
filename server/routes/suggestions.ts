@@ -96,6 +96,23 @@ export const suggestionsRoutes: FastifyPluginAsync = async (app) => {
         for (const pid of photoIds) {
           insertPhoto.run(newCollId, pid, now);
         }
+      } else if (sugg.kind === 'place_link' && payload.place_id && payload.photo_id) {
+        // Confirm GPS place link with source='gps-confirmed' (FR-1202 / AC-24)
+        db.prepare(`
+          INSERT OR REPLACE INTO photo_places (photo_id, place_id, source)
+          VALUES (?, ?, 'gps-confirmed')
+        `).run(payload.photo_id, payload.place_id);
+
+        // If place has linked collection (e.g. place_project), also link to collection
+        const linkedColl = db
+          .prepare('SELECT id FROM collections WHERE place_id = ? LIMIT 1')
+          .get(payload.place_id) as { id: string } | undefined;
+        if (linkedColl) {
+          db.prepare(`
+            INSERT OR IGNORE INTO collection_photos (collection_id, photo_id, added_by, added_at)
+            VALUES (?, ?, 'rule', ?)
+          `).run(linkedColl.id, payload.photo_id, now);
+        }
       }
 
       // Mark suggestion as accepted

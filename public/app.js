@@ -47,6 +47,11 @@ let currentStoryFilter = '';
 let currentStoryDetail = null;
 let allSuggestions = [];
 
+// Places state (Phase 1.5B)
+let allPlaces = [];
+let currentPlaceFilter = '';
+let currentPlaceDetail = null;
+
 // Filter state for Photos tab (FR-601)
 const photoFilters = {
   cat: '',
@@ -229,6 +234,7 @@ function switchTab(tabName) {
   if (tabName === 'photos') loadPhotos();
   if (tabName === 'friends') loadFriends();
   if (tabName === 'stories') loadStories();
+  if (tabName === 'places') loadPlaces();
   if (tabName === 'suggestions') loadSuggestions();
   if (tabName === 'map') {
     loadMap(true);
@@ -610,6 +616,30 @@ async function openPhotoModal(photoId) {
         opt.value = s.id;
         opt.textContent = `${s.name} (${s.photo_count} รูป)`;
         collSelect.appendChild(opt);
+      });
+    }
+
+    // Places picker in photo modal (Phase 1.5B)
+    const placeSelect = document.getElementById('photo-select-place');
+    if (placeSelect) {
+      placeSelect.innerHTML = '<option value="">-- เลือกสถานที่เพื่อผูกรูปนี้ --</option>';
+      allPlaces.forEach((pl) => {
+        const opt = document.createElement('option');
+        opt.value = pl.id;
+        opt.textContent = `${pl.name} (${pl.photo_count} รูป)`;
+        placeSelect.appendChild(opt);
+      });
+    }
+
+    const placesContainer = document.getElementById('photo-modal-places-list');
+    if (placesContainer) {
+      placesContainer.innerHTML = '';
+      (photo.places || []).forEach((pl) => {
+        const chip = document.createElement('span');
+        chip.className = 'type-pill ' + (pl.type || 'other');
+        chip.style.marginRight = '4px';
+        chip.textContent = `📍 ${pl.name} (${pl.source || 'manual'})`;
+        placesContainer.appendChild(chip);
       });
     }
 
@@ -1240,9 +1270,194 @@ async function scanSuggestions() {
   }
 }
 
+// ── Places & Project Threads (Phase 1.5B, FR-1201..1205) ─────
+async function loadPlaces() {
+  try {
+    const url = currentPlaceFilter
+      ? `/places?type=${encodeURIComponent(currentPlaceFilter)}`
+      : '/places';
+    const res = await api(url);
+    allPlaces = res.items;
+
+    const countEl = document.getElementById('places-count');
+    if (countEl) countEl.textContent = `${allPlaces.length} สถานที่`;
+
+    const listEl = document.getElementById('places-list');
+    if (!listEl) return;
+
+    if (allPlaces.length === 0) {
+      listEl.innerHTML = `
+        <div class="empty-state" style="grid-column: 1 / -1; padding: 2rem;">
+          <div class="empty-icon">📍</div>
+          <h3>ยังไม่มีสถานที่บันทึกไว้</h3>
+          <p class="muted">กดปุ่ม "+ เพิ่มสถานที่ใหม่" เพื่อบันทึกพิกัดบ้าน ร้านอาหารโปรด หรือโปรเจกต์</p>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = '';
+    allPlaces.forEach((place) => {
+      const card = document.createElement('div');
+      card.className = 'place-card';
+
+      const typeLabel =
+        place.type === 'home'
+          ? '🏠 บ้าน/ที่พัก'
+          : place.type === 'project'
+          ? '🏗️ โปรเจกต์'
+          : place.type === 'restaurant'
+          ? '🍽️ ร้านอาหาร'
+          : place.type === 'visit'
+          ? '🚶 แวะเยือน'
+          : '📍 อื่นๆ';
+
+      const iconPlaceholder =
+        place.type === 'home'
+          ? '🏠'
+          : place.type === 'project'
+          ? '🏗️'
+          : place.type === 'restaurant'
+          ? '🍽️'
+          : place.type === 'visit'
+          ? '🚶'
+          : '📍';
+
+      card.innerHTML = `
+        <div class="place-cover-box">
+          ${
+            place.latest_photo_id
+              ? `<img src="/api/thumbs/${place.latest_photo_id}" alt="${escapeHtml(place.name)}" />`
+              : `<div class="place-cover-placeholder">${iconPlaceholder}</div>`
+          }
+          <span class="place-badge-count mono">📸 ${place.photo_count} รูป</span>
+        </div>
+        <div class="place-info">
+          <div class="flex-between">
+            <span class="type-pill ${place.type}">${typeLabel}</span>
+            <span class="muted mono" style="font-size:0.75rem;">ไป ${place.visit_count} ครั้ง</span>
+          </div>
+          <h3 class="place-title" title="${escapeHtml(place.name)}">${escapeHtml(place.name)}</h3>
+          ${place.note ? `<p class="place-note">${escapeHtml(place.note)}</p>` : ''}
+        </div>
+      `;
+
+      card.addEventListener('click', () => openPlaceDetail(place.id));
+      listEl.appendChild(card);
+    });
+  } catch {
+    showToast('ไม่สามารถโหลดสถานที่ได้', 'error');
+  }
+}
+
+async function openPlaceDetail(placeId) {
+  try {
+    const place = await api(`/places/${placeId}`);
+    currentPlaceDetail = place;
+
+    document.getElementById('place-detail-title').textContent = place.name;
+    document.getElementById('place-detail-note').textContent = place.note || '';
+
+    const badgeEl = document.getElementById('place-detail-type-badge');
+    badgeEl.className = `type-pill ${place.type}`;
+    badgeEl.textContent =
+      place.type === 'home'
+        ? '🏠 บ้าน/ที่พัก'
+        : place.type === 'project'
+        ? '🏗️ โปรเจกต์'
+        : place.type === 'restaurant'
+        ? '🍽️ ร้านอาหาร'
+        : place.type === 'visit'
+        ? '🚶 แวะเยือน'
+        : '📍 อื่นๆ';
+
+    document.getElementById('place-stat-photos').textContent = String(place.photos.length);
+    document.getElementById('place-stat-visits').textContent = `${place.visit_count} ครั้ง`;
+    document.getElementById('place-stat-first').textContent = formatThaiDateShort(place.first_visit);
+    document.getElementById('place-stat-last').textContent = formatThaiDateShort(place.last_visit);
+
+    document.getElementById('place-detail-gps').textContent = formatGps(place.lat, place.lon);
+    document.getElementById('place-detail-radius').textContent = `${place.radius_m || 120} เมตร`;
+
+    const friendsText = (place.friends || []).map((f) => f.name).join(', ') || 'ไม่มี';
+    document.getElementById('place-detail-friends').textContent = friendsText;
+
+    const timelineContainer = document.getElementById('place-progress-timeline-container');
+    const gridContainer = document.getElementById('place-photos-grid-container');
+
+    if (place.type === 'project') {
+      timelineContainer.style.display = 'block';
+      gridContainer.style.display = 'none';
+
+      const timelineEl = document.getElementById('place-progress-timeline');
+      if (place.photos.length === 0) {
+        timelineEl.innerHTML = '<p class="muted" style="font-size:0.85rem;">ยังไม่มีรูปภาพในโปรเจกต์นี้</p>';
+      } else {
+        timelineEl.innerHTML = '';
+        place.photos.forEach((p, idx) => {
+          const item = document.createElement('div');
+          item.className = 'progress-timeline-item';
+          item.innerHTML = `
+            <img src="/api/thumbs/${p.id}" class="progress-thumb" alt="" onclick="openPhotoModal('${p.id}')" />
+            <div style="flex:1; min-width:0;">
+              <div style="font-weight:600; font-size:0.88rem;">ขั้นตอนที่ ${idx + 1}: ${escapeHtml(p.filename)}</div>
+              <div class="muted mono" style="font-size:0.75rem;">📅 ${formatThaiDate(p.taken_at)} ${formatTime(p.taken_at)}</div>
+              ${p.event_name ? `<div class="muted" style="font-size:0.75rem;">🎞️ ${escapeHtml(p.event_name)}</div>` : ''}
+              ${p.note ? `<div style="font-size:0.8rem; margin-top:0.2rem;">${escapeHtml(p.note)}</div>` : ''}
+            </div>
+            <button class="btn btn-sm btn-danger" onclick="unlinkPhotoFromPlace('${place.id}', '${p.id}')" title="ยกเลิกการผูกรูป">✕</button>
+          `;
+          timelineEl.appendChild(item);
+        });
+      }
+    } else {
+      timelineContainer.style.display = 'none';
+      gridContainer.style.display = 'block';
+
+      const photosEl = document.getElementById('place-detail-photos');
+      if (place.photos.length === 0) {
+        photosEl.innerHTML = '<p class="muted" style="font-size:0.85rem;">ยังไม่มีรูปภาพที่ผูกกับสถานที่นี้</p>';
+      } else {
+        photosEl.innerHTML = '';
+        place.photos.forEach((p) => {
+          const card = document.createElement('div');
+          card.className = 'photo-card';
+          card.style.position = 'relative';
+          card.innerHTML = `
+            <img src="/api/thumbs/${p.id}" alt="${escapeHtml(p.filename)}" />
+            <div class="photo-info mono">
+              <span>${formatThaiDateShort(p.taken_at)}</span>
+            </div>
+            <button class="btn btn-sm btn-danger" style="position:absolute; top:4px; right:4px; padding:2px 6px; font-size:0.7rem; border-radius:4px;" onclick="event.stopPropagation(); unlinkPhotoFromPlace('${place.id}', '${p.id}')" title="ยกเลิกการผูก">✕</button>
+          `;
+          card.addEventListener('click', () => openPhotoModal(p.id));
+          photosEl.appendChild(card);
+        });
+      }
+    }
+
+    document.getElementById('modal-place-detail').style.display = 'flex';
+  } catch {
+    showToast('ไม่สามารถเปิดรายละเอียดสถานที่ได้', 'error');
+  }
+}
+
+async function unlinkPhotoFromPlace(placeId, photoId) {
+  try {
+    await api(`/places/${placeId}/photos/${photoId}`, { method: 'DELETE' });
+    showToast('ยกเลิกการผูกรูปกับสถานที่เรียบร้อย', 'info');
+    openPlaceDetail(placeId);
+    loadPlaces();
+  } catch {
+    showToast('ไม่สามารถยกเลิกการผูกรูปได้', 'error');
+  }
+}
+
 // Global exposure for event handlers
 window.openStoryDetail = openStoryDetail;
 window.removePhotoFromStory = removePhotoFromStory;
+window.openPlaceDetail = openPlaceDetail;
+window.unlinkPhotoFromPlace = unlinkPhotoFromPlace;
 window.acceptSuggestion = acceptSuggestion;
 window.dismissSuggestion = dismissSuggestion;
 window.scanSuggestions = scanSuggestions;
@@ -1286,6 +1501,8 @@ async function init() {
   setupVoiceInput(document.getElementById('btn-voice-friend-note'), document.getElementById('input-friend-note'));
   setupVoiceInput(document.getElementById('btn-voice-story-name'), document.getElementById('input-story-name'));
   setupVoiceInput(document.getElementById('btn-voice-story-note'), document.getElementById('input-story-note'));
+  setupVoiceInput(document.getElementById('btn-voice-place-name'), document.getElementById('input-place-name'));
+  setupVoiceInput(document.getElementById('btn-voice-place-note'), document.getElementById('input-place-note'));
 
   // Close buttons for modals
   document.getElementById('btn-close-photo-modal')?.addEventListener('click', closeAllModals);
@@ -1299,6 +1516,10 @@ async function init() {
   document.getElementById('btn-cancel-create-story')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-close-story-detail')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-close-story-footer')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-create-place')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-cancel-create-place')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-place-detail')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-place-footer')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-close-import')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-cancel-import')?.addEventListener('click', closeAllModals);
 
@@ -1657,6 +1878,93 @@ async function init() {
     }
   });
 
+  // Places controls (Phase 1.5B)
+  document.getElementById('btn-create-place')?.addEventListener('click', () => {
+    document.getElementById('input-place-name').value = '';
+    document.getElementById('select-place-type').value = 'project';
+    document.getElementById('input-place-lat').value = '';
+    document.getElementById('input-place-lon').value = '';
+    document.getElementById('input-place-radius').value = '120';
+    document.getElementById('input-place-note').value = '';
+    document.getElementById('modal-create-place').style.display = 'flex';
+  });
+
+  document.getElementById('btn-save-new-place')?.addEventListener('click', async () => {
+    const name = document.getElementById('input-place-name').value.trim();
+    if (!name) {
+      showToast('กรุณาระบุชื่อสถานที่', 'error');
+      return;
+    }
+    const type = document.getElementById('select-place-type').value;
+    const latVal = document.getElementById('input-place-lat').value.trim();
+    const lonVal = document.getElementById('input-place-lon').value.trim();
+    const radiusVal = document.getElementById('input-place-radius').value.trim();
+    const note = document.getElementById('input-place-note').value.trim();
+
+    const lat = latVal ? parseFloat(latVal) : null;
+    const lon = lonVal ? parseFloat(lonVal) : null;
+    const radius_m = radiusVal ? parseInt(radiusVal, 10) : 120;
+
+    try {
+      await api('/places', {
+        method: 'POST',
+        body: JSON.stringify({ name, type, lat, lon, radius_m, note }),
+      });
+      document.getElementById('modal-create-place').style.display = 'none';
+      showToast(`สร้างสถานที่ "${name}" เรียบร้อย`, 'success');
+      loadPlaces();
+    } catch (err) {
+      showToast(err.message || 'ไม่สามารถสร้างสถานที่ได้', 'error');
+    }
+  });
+
+  document.getElementById('btn-delete-place')?.addEventListener('click', async () => {
+    if (!currentPlaceDetail) return;
+    if (!confirm(`ต้องการลบสถานที่ "${currentPlaceDetail.name}" หรือไม่?\n(รูปภาพทั้งหมดในเครื่องจะไม่ถูกลบ)`)) {
+      return;
+    }
+    try {
+      await api(`/places/${currentPlaceDetail.id}`, { method: 'DELETE' });
+      document.getElementById('modal-place-detail').style.display = 'none';
+      showToast('ลบสถานที่เรียบร้อย (รูปภาพไม่ถูกลบ)', 'info');
+      loadPlaces();
+    } catch {
+      showToast('ไม่สามารถลบสถานที่ได้', 'error');
+    }
+  });
+
+  // Place type filter buttons
+  document.querySelectorAll('[data-place-type]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-place-type]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentPlaceFilter = btn.dataset.placeType;
+      loadPlaces();
+    });
+  });
+
+  // Add active photo to place button
+  document.getElementById('btn-add-photo-to-place')?.addEventListener('click', async () => {
+    const placeId = document.getElementById('photo-select-place')?.value;
+    if (!placeId) {
+      showToast('กรุณาเลือกสถานที่ก่อน', 'error');
+      return;
+    }
+    const currentPhoto = loadedPhotos[activePhotoIndex];
+    if (!currentPhoto) return;
+    try {
+      await api(`/places/${placeId}/photos`, {
+        method: 'POST',
+        body: JSON.stringify({ photo_ids: [currentPhoto.id] }),
+      });
+      showToast('ผูกรูปเข้ากับสถานที่สำเร็จ', 'success');
+      loadPlaces();
+      openPhotoModal(currentPhoto.id);
+    } catch {
+      showToast('ไม่สามารถผูกรูปเข้ากับสถานที่ได้', 'error');
+    }
+  });
+
   // Suggestions controls (Phase 1.5A)
   document.getElementById('btn-scan-suggestions')?.addEventListener('click', scanSuggestions);
 
@@ -1664,6 +1972,7 @@ async function init() {
   await updateStatus();
   await loadFriends();
   await loadStories();
+  await loadPlaces();
   await loadSuggestions();
   await loadDashboard();
 

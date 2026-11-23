@@ -37,10 +37,10 @@
     <button class="tab" data-tab="friends" role="tab">เพื่อน</button>
     <button class="tab" data-tab="map" role="tab">แผนที่</button>
     <button class="tab" data-tab="stories" role="tab">เรื่องราว</button>
+    <button class="tab" data-tab="places" role="tab">สถานที่</button>
     <button class="tab" data-tab="suggestions" role="tab">กล่องข้อเสนอ <span id="badge-suggestions" class="badge-count" style="display:none">0</span></button>
     <!-- Phase 1.5 tabs (hidden until implemented) -->
     <button class="tab phase15" data-tab="meals" role="tab" style="display:none">มื้ออาหาร</button>
-    <button class="tab phase15" data-tab="places" role="tab" style="display:none">สถานที่</button>
     <button class="tab phase15" data-tab="recap" role="tab" style="display:none">สรุปเดือน</button>
   </nav>
 
@@ -335,6 +335,37 @@
       <div class="stories-grid" id="stories-list"></div>
     </section>
 
+    <!-- ── Places View (Phase 1.5B, FR-1201..1205) ── -->
+    <section id="view-places" class="view">
+      <div class="section-header">
+        <div>
+          <h2 class="view-title">สถานที่และโปรเจกต์ (Places & Project Threads)</h2>
+          <p class="muted" style="font-size: 0.82rem; margin-top: 0.2rem;">
+            จัดการสถานที่สำคัญ ติดตามพัฒนาการโปรเจกต์ (Before-After) และบันทึกการแวะเยือน
+          </p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-create-place">+ เพิ่มสถานที่ใหม่</button>
+      </div>
+
+      <!-- Filter bar for places -->
+      <div class="filter-bar card" style="margin-bottom: 1rem; padding: 0.5rem 0.8rem;">
+        <div class="filter-row" style="gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <span class="filter-label">ประเภท:</span>
+          <div class="place-type-filters">
+            <button class="btn btn-sm active" data-place-type="">ทั้งหมด</button>
+            <button class="btn btn-sm" data-place-type="home">🏠 บ้าน/ที่พัก</button>
+            <button class="btn btn-sm" data-place-type="project">🏗️ โปรเจกต์</button>
+            <button class="btn btn-sm" data-place-type="restaurant">🍽️ ร้านอาหาร</button>
+            <button class="btn btn-sm" data-place-type="visit">🚶 แวะเยือน</button>
+            <button class="btn btn-sm" data-place-type="other">📍 อื่นๆ</button>
+          </div>
+          <span class="muted mono" id="places-count" style="margin-left: auto; font-size: 0.82rem;">0 สถานที่</span>
+        </div>
+      </div>
+
+      <div class="places-grid" id="places-list"></div>
+    </section>
+
     <!-- ── Suggestions Inbox View (Phase 1.5A, DR10 / Section 8.9) ── -->
     <section id="view-suggestions" class="view">
       <div class="section-header">
@@ -427,6 +458,18 @@
               <button class="btn btn-sm" id="btn-add-photo-to-story">+ เพิ่ม</button>
             </div>
             <div id="photo-modal-stories-list" class="tag-chips" style="margin-top: 0.4rem;"></div>
+          </div>
+
+          <!-- Place Link (FR-1201 / FR-1202) -->
+          <div class="meta-section">
+            <h4 class="meta-heading">สถานที่ที่เกี่ยวข้อง</h4>
+            <div style="display: flex; gap: 0.4rem; align-items: center;">
+              <select id="photo-select-place" class="input input-sm" style="flex: 1;">
+                <option value="">-- เลือกสถานที่เพื่อผูกรูปนี้ --</option>
+              </select>
+              <button class="btn btn-sm" id="btn-add-photo-to-place">+ ผูก</button>
+            </div>
+            <div id="photo-modal-places-list" class="tag-chips" style="margin-top: 0.4rem;"></div>
           </div>
 
           <!-- Delete action (FR-405) -->
@@ -670,6 +713,125 @@
       <div class="modal-footer flex-between">
         <button class="btn btn-danger btn-sm" id="btn-delete-story">ลบเรื่องราวนี้</button>
         <button class="btn" id="btn-close-story-footer">ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4d. Modal: Create Place (Phase 1.5B, FR-1201) ────────── -->
+  <div id="modal-create-place" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">📍 เพิ่มสถานที่ใหม่ (Place)</h3>
+        <button class="btn-close" id="btn-close-create-place">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <div class="flex-between">
+            <label class="form-label" for="input-place-name">ชื่อสถานที่ (จำเป็น)</label>
+            <button class="btn-voice" id="btn-voice-place-name" title="พูดชื่อสถานที่">🎙️ พูด</button>
+          </div>
+          <input type="text" id="input-place-name" class="input" placeholder="เช่น คอนโดสุขุมวิท, ร้านกาแฟโปรด, บ้านคุณย่า" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="select-place-type">ประเภทสถานที่</label>
+          <select id="select-place-type" class="input">
+            <option value="home">🏠 บ้าน / ที่พักอาศัย</option>
+            <option value="project">🏗️ โปรเจกต์สถานที่ (สร้างคอลเลกชันไทม์ไลน์อัตโนมัติ)</option>
+            <option value="restaurant">🍽️ ร้านอาหาร / คาเฟ่</option>
+            <option value="visit">🚶 แวะเยือน / เที่ยวชม</option>
+            <option value="other" selected>📍 อื่นๆ</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label class="form-label" for="input-place-lat">พิกัดละติจูด (Lat)</label>
+            <input type="number" step="any" id="input-place-lat" class="input mono" placeholder="เช่น 13.7460" />
+          </div>
+          <div class="form-group flex-1">
+            <label class="form-label" for="input-place-lon">พิกัดลองจิจูด (Lon)</label>
+            <input type="number" step="any" id="input-place-lon" class="input mono" placeholder="เช่น 100.5340" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-place-radius">รัศมีการตรวจจับ (เมตร)</label>
+          <input type="number" id="input-place-radius" class="input mono" value="120" placeholder="ค่าเริ่มต้น 120 เมตร" />
+          <span class="muted" style="font-size: 0.75rem;">ระยะที่ระบบจะนำภาพถ่ายในพิกัดใกล้เคียงมาผูกกับสถานที่นี้โดยอัตโนมัติ</span>
+        </div>
+
+        <div class="form-group">
+          <div class="flex-between">
+            <label class="form-label" for="input-place-note">บันทึกช่วยจำ</label>
+            <button class="btn-voice" id="btn-voice-place-note" title="พูดบันทึกช่วยจำ">🎙️ พูด</button>
+          </div>
+          <textarea id="input-place-note" class="input" rows="2" placeholder="รายละเอียด ที่อยู่ หรือความทรงจำเกี่ยวกับสถานที่นี้..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-cancel-create-place">ยกเลิก</button>
+        <button class="btn btn-primary" id="btn-save-new-place">บันทึกสถานที่</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 4e. Modal: Place Detail Modal (Phase 1.5B, FR-1203..1205) -->
+  <div id="modal-place-detail" class="modal-backdrop" style="display: none;">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="type-pill" id="place-detail-type-badge">สถานที่</span>
+          <h3 class="modal-title" id="place-detail-title">ชื่อสถานที่</h3>
+        </div>
+        <button class="btn-close" id="btn-close-place-detail">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted" id="place-detail-note" style="margin-bottom: 0.8rem; font-size: 0.88rem;"></p>
+
+        <div class="stats-grid" id="place-detail-stats" style="margin-bottom: 1rem;">
+          <div class="stat-card">
+            <div class="stat-label">รูปภาพที่ผูกไว้</div>
+            <div class="stat-value mono" id="place-stat-photos">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">จำนวนครั้งที่ไป</div>
+            <div class="stat-value mono" id="place-stat-visits">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">ไปครั้งแรก</div>
+            <div class="stat-value-sm mono" id="place-stat-first">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">ไปล่าสุด</div>
+            <div class="stat-value-sm mono" id="place-stat-last">-</div>
+          </div>
+        </div>
+
+        <div class="meta-section" style="margin-bottom: 1rem;">
+          <h4 class="meta-heading">พิกัดและข้อมูลตำแหน่ง</h4>
+          <div class="meta-grid mono">
+            <div><span class="muted">พิกัด:</span> <span id="place-detail-gps">-</span></div>
+            <div><span class="muted">รัศมี:</span> <span id="place-detail-radius">120 เมตร</span></div>
+            <div><span class="muted">เพื่อนที่เคยไป:</span> <span id="place-detail-friends">-</span></div>
+          </div>
+        </div>
+
+        <!-- Progress Timeline (For project type - FR-1203 / AC-25) -->
+        <div id="place-progress-timeline-container" style="display: none; margin-bottom: 1rem;">
+          <h4 class="meta-heading">ไทม์ไลน์พัฒนาการของโปรเจกต์ (Before → After)</h4>
+          <div class="project-progress-list" id="place-progress-timeline"></div>
+        </div>
+
+        <!-- Normal Photo Grid -->
+        <div id="place-photos-grid-container">
+          <h4 class="meta-heading">รูปภาพทั้งหมดที่สถานที่นี้</h4>
+          <div class="photos-grid" id="place-detail-photos" style="max-height: 280px; overflow-y: auto;"></div>
+        </div>
+      </div>
+      <div class="modal-footer flex-between">
+        <button class="btn btn-danger btn-sm" id="btn-delete-place">ลบสถานที่นี้</button>
+        <button class="btn" id="btn-close-place-footer">ปิด</button>
       </div>
     </div>
   </div>

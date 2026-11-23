@@ -1,6 +1,6 @@
 // server/workers/suggest.ts — Rule-based Suggestion Engine (Phase 1.5, No AI)
-import db from '../db.js';
-import { genId } from '../utils.js';
+import db, { getSetting } from '../db.js';
+import { genId, haversine } from '../utils.js';
 
 interface SuggestionRow {
   id: string;
@@ -129,6 +129,84 @@ export function runSuggestionScan(): { added: number } {
 
         insertStmt.run(genId(), 'collection_create', JSON.stringify(payload), now);
         addedCount++;
+      }
+    }
+  }
+
+  // ── Rule 3: Place GPS Matching (Algorithm 8.7 / FR-1202 / AC-24) ───
+  const placesWithGps = db
+    .prepare('SELECT id, name, lat, lon, radius_m FROM places WHERE lat IS NOT NULL AND lon IS NOT NULL')
+    .all() as Array<{ id: string; name: string; lat: number; lon: number; radius_m: number }>;
+
+  if (placesWithGps.length > 0) {
+    const unlinkedGpsPhotos = db
+      .prepare(`
+        SELECT p.id, p.filename, p.lat, p.lon, p.taken_at
+        FROM photos p
+        WHERE p.lat IS NOT NULL AND p.lon IS NOT NULL
+          AND p.id NOT IN (SELECT photo_id FROM photo_places)
+        ORDER BY p.taken_at DESC
+        LIMIT 100
+      `)
+      .all() as Array<{ id: string; filename: string; lat: number; lon: number; taken_at: number | null }>;
+
+    const autoLinkSetting = getSetting('auto_link_places') === '1';
+
+    for (const photo of unlinkedGpsPhotos) {
+      let nearestPlace: { id: string; name: string; distM: number } | null = null;
+
+      for (const place of placesWithGps) {
+        const distKm = haversine(
+          { lat: photo.lat, lon: photo.lon },
+          { lat: place.lat, lon: place.lon }
+        );
+        const distM = distKm * 1000;
+        if (distM <= place.radius_m) {
+          if (!nearestPlace || distM < nearestPlace.distM) {
+            nearestPlace = { id: place.id, name: place.name, distM };
+          }
+        }
+      }
+
+      if (nearestPlace) {
+        if (autoLinkSetting) {
+          // Auto-link with source 'gps-confirmed' (FR-1202 / AC-24)
+          db.prepare(`
+            INSERT OR REPLACE INTO photo_places (photo_id, place_id, source)
+            VALUES (?, ?, 'gps-confirmed')
+          `).run(photo.id, nearestPlace.id);
+
+          // If this place is a project place with an auto-created collection, also link to collection
+          const linkedColl = db
+            .prepare('SELECT id FROM collections WHERE place_id = ? LIMIT 1')
+            .get(nearestPlace.id) as { id: string } | undefined;
+          if (linkedColl) {
+            db.prepare(`
+              INSERT OR IGNORE INTO collection_photos (collection_id, photo_id, added_by, added_at)
+              VALUES (?, ?, 'rule', ?)
+            `).run(linkedColl.id, photo.id, now);
+          }
+        } else {
+          // Emit suggestion { kind: 'place_link' }
+          const alreadySuggested = suggestionExists('place_link', (p) => {
+            return p.place_id === nearestPlace!.id && p.photo_id === photo.id;
+          });
+
+          if (!alreadySuggested) {
+            const payload = {
+              place_id: nearestPlace.id,
+              place_name: nearestPlace.name,
+              photo_id: photo.id,
+              photo_filename: photo.filename,
+              distance_m: Math.round(nearestPlace.distM),
+              title: `ผูกรูปภาพกับสถานที่ "${nearestPlace.name}"`,
+              reason: `รูป "${photo.filename}" ถ่ายห่างจาก "${nearestPlace.name}" เพียง ${Math.round(nearestPlace.distM)} เมตร`,
+            };
+
+            insertStmt.run(genId(), 'place_link', JSON.stringify(payload), now);
+            addedCount++;
+          }
+        }
       }
     }
   }
