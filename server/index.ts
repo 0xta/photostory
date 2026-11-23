@@ -19,6 +19,7 @@ import { collectionsRoutes } from './routes/collections.js';
 import { suggestionsRoutes } from './routes/suggestions.js';
 import { placesRoutes } from './routes/places.js';
 import { mealsRoutes } from './routes/meals.js';
+import { recapsRoutes } from './routes/recaps.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -39,6 +40,7 @@ app.register(collectionsRoutes);
 app.register(suggestionsRoutes);
 app.register(placesRoutes);
 app.register(mealsRoutes);
+app.register(recapsRoutes);
 
 // ── Serve static frontend ───────────────────────────────────────
 app.register(fastifyStatic, {
@@ -60,7 +62,7 @@ app.get('/api/health', async () => {
   return {
     status: 'ok',
     version: '0.1.0',
-    phase: '1.5C',
+    phase: '1.5D',
     counts: { photos: photoCount, events: eventCount, persons: personCount },
   };
 });

@@ -1528,6 +1528,169 @@ body {
   flex-wrap: wrap;
 }
 
+/* ── Recap View (Phase 1.5D) ─────────────────────────────── */
+.recap-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.recap-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.recap-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px var(--shadow);
+  z-index: 100;
+  min-width: 170px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.dropdown-item {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 0.5rem 0.8rem;
+  text-align: left;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dropdown-item:hover {
+  background: var(--panel2);
+  color: var(--accent);
+}
+.recap-card {
+  max-width: 820px;
+  margin: 0 auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.8rem;
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.recap-header-box {
+  margin-bottom: 1.2rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
+}
+.recap-headline {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 0.3rem;
+}
+.recap-stats-line {
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+.recap-stale-banner {
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  background: rgba(234, 179, 8, 0.12);
+  color: #eab308;
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  margin-bottom: 1.2rem;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.recap-narrative-box {
+  background: var(--panel2);
+  border-left: 4px solid var(--accent);
+  padding: 1.1rem 1.4rem;
+  border-radius: 8px;
+  margin-bottom: 1.8rem;
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: var(--ink);
+}
+.recap-section {
+  margin-top: 1.5rem;
+}
+.recap-section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.recap-highlights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.recap-highlight-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel2);
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.recap-highlight-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px var(--shadow);
+}
+.recap-highlight-thumb {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  display: block;
+}
+.recap-highlight-note {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recap-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.recap-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  border-radius: 9999px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  font-size: 0.82rem;
+}
+.recap-top-meal {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+}
+.recap-top-meal strong {
+  color: var(--accent);
+}
+
 /* ── Responsive Mobile ────────────────────────────────────── */
 @media (max-width: 390px) {
   .app-header { padding: 0.5rem 0.6rem; flex-wrap: wrap; }

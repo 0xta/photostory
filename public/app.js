@@ -244,6 +244,7 @@ function switchTab(tabName) {
   if (tabName === 'places') loadPlaces();
   if (tabName === 'meals') loadMeals();
   if (tabName === 'suggestions') loadSuggestions();
+  if (tabName === 'recap') loadRecap(currentRecapYear, currentRecapMonth);
   if (tabName === 'map') {
     loadMap(true);
     setTimeout(() => {
@@ -1725,6 +1726,144 @@ async function openMealDetail(mealId) {
   }
 }
 
+// ── Recap View (Phase 1.5D, FR-1301..1304) ───────────────────
+let currentRecapYear = 2026;
+let currentRecapMonth = 11;
+let currentRecapData = null;
+
+async function loadRecap(year, month, forceFresh = false) {
+  const container = document.getElementById('recap-card-container');
+  if (!container) return;
+
+  container.innerHTML = '<div class="muted" style="text-align: center; padding: 2rem;">กำลังสร้างและประมวลผลเรื่องราว...</div>';
+
+  try {
+    const url = `/recaps/${year}/${month}${forceFresh ? '?fresh=1' : ''}`;
+    const recap = await api(url);
+    currentRecapData = recap;
+
+    const content = recap.content || {};
+    const highlights = content.highlights || [];
+    const friends = content.friends || [];
+    const places = content.places || [];
+    const topMeal = content.top_meal;
+
+    let staleHtml = '';
+    if (recap.stale) {
+      staleHtml = `
+        <div class="recap-stale-banner">
+          <span>⚠️ มีรูปภาพใหม่ในช่วงเวลานี้ — แนะนำให้กดสร้างใหม่เพื่ออัปเดตเรื่องราว</span>
+          <button class="btn btn-sm btn-primary" onclick="loadRecap(${year}, ${month}, true)">อัปเดตตอนนี้</button>
+        </div>
+      `;
+    }
+
+    let highlightsHtml = '';
+    if (highlights.length > 0) {
+      highlightsHtml = `
+        <div class="recap-section">
+          <div class="recap-section-title">⭐ ไฮไลต์ภาพคัดสรร (${highlights.length} ภาพ)</div>
+          <div class="recap-highlights-grid">
+            ${highlights
+              .map(
+                (h) => `
+                <div class="recap-highlight-card" onclick="openPhotoModal('${h.id}')">
+                  <img class="recap-highlight-thumb" src="/api/photos/${h.id}/thumb" alt="${escapeHtml(h.filename)}" loading="lazy" />
+                  <div class="recap-highlight-note">${escapeHtml(h.note || h.filename)}</div>
+                </div>
+              `
+              )
+              .join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    let friendsHtml = '';
+    if (friends.length > 0) {
+      friendsHtml = `
+        <div class="recap-section">
+          <div class="recap-section-title">👥 เพื่อนที่พบเจอ</div>
+          <div class="recap-badges">
+            ${friends
+              .map(
+                (f) => `
+                <span class="recap-badge" style="border-left: 3px solid ${f.color || '#E56B50'}">
+                  ${escapeHtml(f.name)} <span class="muted" style="margin-left: 4px;">(${f.count})</span>
+                </span>
+              `
+              )
+              .join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    let placesHtml = '';
+    if (places.length > 0) {
+      placesHtml = `
+        <div class="recap-section">
+          <div class="recap-section-title">📍 สถานที่ที่ไปเยือน</div>
+          <div class="recap-badges">
+            ${places
+              .map(
+                (p) => `
+                <span class="recap-badge">📍 ${escapeHtml(p.name)}</span>
+              `
+              )
+              .join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    let topMealHtml = '';
+    if (topMeal) {
+      const ratingStars = topMeal.rating ? ' ⭐'.repeat(topMeal.rating) : '';
+      topMealHtml = `
+        <div class="recap-section">
+          <div class="recap-section-title">🍽️ มื้อเด่นประจำช่วงเวลา</div>
+          <div class="recap-top-meal">
+            <div><strong>${escapeHtml(topMeal.place_name)}</strong> — ${escapeHtml(topMeal.meal_type)} ${ratingStars}</div>
+            ${topMeal.note ? `<div class="muted" style="margin-top: 0.3rem; font-size: 0.88rem;">${escapeHtml(topMeal.note)}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      <div class="recap-card">
+        ${staleHtml}
+        <div class="recap-header-box">
+          <div class="recap-headline">${escapeHtml(content.headline || 'สรุปความทรงจำ')}</div>
+          <div class="recap-stats-line">${escapeHtml(content.stats_summary || '')}</div>
+        </div>
+
+        <div class="recap-narrative-box">
+          ${escapeHtml(content.narrative || 'ยังไม่มีข้อมูลสำหรับช่วงเวลานี้')}
+        </div>
+
+        ${highlightsHtml}
+        ${friendsHtml}
+        ${placesHtml}
+        ${topMealHtml}
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<div class="muted" style="text-align: center; padding: 2rem;">ไม่สามารถสร้างสรุปความทรงจำได้: ${escapeHtml(err.message || 'เกิดข้อผิดพลาด')}</div>`;
+  }
+}
+
+function exportRecap(format) {
+  const url = `/api/recaps/${currentRecapYear}/${currentRecapMonth}/export?format=${encodeURIComponent(format)}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 // Global exposure for event handlers
 window.openStoryDetail = openStoryDetail;
 window.removePhotoFromStory = removePhotoFromStory;
@@ -1734,6 +1873,8 @@ window.openMealDetail = openMealDetail;
 window.acceptSuggestion = acceptSuggestion;
 window.dismissSuggestion = dismissSuggestion;
 window.scanSuggestions = scanSuggestions;
+window.loadRecap = loadRecap;
+window.exportRecap = exportRecap;
 
 // ── Modals Close & Keyboard Navigation (FR-402, AC-15) ────────
 function closeAllModals() {
@@ -2324,6 +2465,46 @@ async function init() {
 
   // Suggestions controls (Phase 1.5A)
   document.getElementById('btn-scan-suggestions')?.addEventListener('click', scanSuggestions);
+
+  // Recap View controls (Phase 1.5D)
+  const recapYearSelect = document.getElementById('recap-select-year');
+  const recapMonthSelect = document.getElementById('recap-select-month');
+  if (recapYearSelect) {
+    recapYearSelect.value = String(currentRecapYear);
+    recapYearSelect.addEventListener('change', (e) => {
+      currentRecapYear = Number(e.target.value);
+      loadRecap(currentRecapYear, currentRecapMonth);
+    });
+  }
+  if (recapMonthSelect) {
+    recapMonthSelect.value = String(currentRecapMonth);
+    recapMonthSelect.addEventListener('change', (e) => {
+      currentRecapMonth = Number(e.target.value);
+      loadRecap(currentRecapYear, currentRecapMonth);
+    });
+  }
+  document.getElementById('btn-recap-regenerate')?.addEventListener('click', () => {
+    loadRecap(currentRecapYear, currentRecapMonth, true);
+  });
+  const exportBtn = document.getElementById('btn-recap-export-menu');
+  const exportDropdown = document.getElementById('recap-export-dropdown');
+  if (exportBtn && exportDropdown) {
+    exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportDropdown.style.display = exportDropdown.style.display === 'none' ? 'flex' : 'none';
+    });
+    document.addEventListener('click', () => {
+      exportDropdown.style.display = 'none';
+    });
+    exportDropdown.querySelectorAll('.dropdown-item').forEach((item) => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        exportDropdown.style.display = 'none';
+        const format = item.dataset.export;
+        exportRecap(format);
+      });
+    });
+  }
 
   // Initial load
   await updateStatus();

@@ -218,9 +218,9 @@ assert.equal(backupData.persons.length, 1);
 // Clear app data (FR-803)
 const clearRes = await app.inject({ method: 'POST', url: '/api/clear' });
 assert.equal(clearRes.statusCode, 200);
-assert.equal(db.prepare('SELECT COUNT(*) as c FROM photos').get().c, 0);
-assert.equal(db.prepare('SELECT COUNT(*) as c FROM events').get().c, 0);
-assert.equal(db.prepare('SELECT COUNT(*) as c FROM persons').get().c, 0);
+assert.equal((db.prepare('SELECT COUNT(*) as c FROM photos').get() as any).c, 0);
+assert.equal((db.prepare('SELECT COUNT(*) as c FROM events').get() as any).c, 0);
+assert.equal((db.prepare('SELECT COUNT(*) as c FROM persons').get() as any).c, 0);
 
 // Re-import photos
 const reimportRes = await app.inject({

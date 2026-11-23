@@ -125,6 +125,20 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       db.prepare("SELECT COUNT(*) as c FROM suggestions WHERE status = 'pending'").get() as { c: number }
     ).c;
 
+    const latestRecapRow = db
+      .prepare('SELECT id, year, month, content, format, generated_at FROM recaps ORDER BY year DESC, CASE WHEN month IS NULL THEN 13 ELSE month END DESC LIMIT 1')
+      .get() as any;
+    const latestRecap = latestRecapRow
+      ? {
+          id: latestRecapRow.id,
+          year: latestRecapRow.year,
+          month: latestRecapRow.month,
+          content: JSON.parse(latestRecapRow.content),
+          format: latestRecapRow.format,
+          generated_at: latestRecapRow.generated_at,
+        }
+      : null;
+
     return {
       totals: {
         photos: totalPhotos,
@@ -146,6 +160,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         pending_suggestions: pendingSuggestionsCount,
       },
       recent_events: recent,
+      latest_recap: latestRecap,
     };
   });
 };
