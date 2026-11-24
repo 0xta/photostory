@@ -1038,6 +1038,70 @@
     </div>
   </div>
 
+  <!-- ── 4h. Modal: Face Cluster Inspection & Confirmation ──── -->
+  <div id="modal-face-cluster" class="modal-backdrop" style="display: none;">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="type-pill">👤 ตรวจสอบกลุ่มใบหน้า</span>
+          <h3 class="modal-title" id="face-cluster-modal-title">กลุ่มใบหน้า</h3>
+        </div>
+        <button class="btn-close" id="btn-close-face-cluster">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="face-cluster-modal-grid">
+          <!-- Left: Big view with bounding box highlight overlay -->
+          <div class="face-cluster-main-view">
+            <div class="face-cluster-photo-container" id="face-cluster-photo-container">
+              <img id="face-cluster-modal-photo-img" src="" alt="Photo" />
+              <div id="face-cluster-modal-bbox" class="face-bbox-overlay">
+                <span class="face-bbox-label" id="face-cluster-modal-bbox-label">👤 กำลังตั้งชื่อคนนี้</span>
+              </div>
+            </div>
+            <div class="face-cluster-thumbs-strip-wrap" style="width: 100%;">
+              <div style="font-size: 0.78rem; color: var(--muted); margin-bottom: 4px;">คลิกรูปด้านล่างเพื่อสลับตรวจดูบุคคลนี้ในรูปอื่นๆ:</div>
+              <div class="face-cluster-thumbs-strip" id="face-cluster-modal-thumbs">
+                <!-- thumbnails of all photos in this cluster -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Details, Avatar crop, and Name Input -->
+          <div class="face-cluster-side-panel">
+            <div class="face-avatar-large-wrap">
+              <img id="face-cluster-modal-avatar" class="face-avatar-large" src="" alt="Cropped Face" />
+              <div class="face-avatar-caption">ภาพตัดเฉพาะใบหน้า (Avatar)</div>
+            </div>
+            <div class="meta-section" style="margin-top: 0.8rem;">
+              <div class="meta-grid mono">
+                <div><span class="muted">พบในรูป:</span> <span id="face-cluster-modal-photo-count">0</span> ใบ</div>
+                <div><span class="muted">พบใบหน้า:</span> <span id="face-cluster-modal-face-count">0</span> ครั้ง</div>
+                <div><span class="muted">ไฟล์:</span> <span id="face-cluster-modal-filename" style="word-break: break-all;">-</span></div>
+              </div>
+            </div>
+            <div class="form-group" style="margin-top: 1rem;">
+              <label for="face-cluster-modal-name-input" class="form-label">ชื่อเพื่อน / บุคคลนี้</label>
+              <input
+                type="text"
+                id="face-cluster-modal-name-input"
+                class="input"
+                placeholder="เช่น สมชาย, พี่เอ, หรือชื่อกลุ่ม..."
+              />
+            </div>
+            <div class="face-cluster-modal-actions" style="margin-top: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem;">
+              <button class="btn btn-primary" id="btn-face-cluster-accept">✓ ยอมรับและตั้งชื่อ</button>
+              <button class="btn" id="btn-face-cluster-dismiss">✕ ข้ามกลุ่มนี้</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer flex-between">
+        <span class="muted" style="font-size: 0.8rem;">💡 การยอมรับจะผูกรูปทั้งหมดของบุคคลนี้เข้ากับเพื่อนโดยอัตโนมัติ</span>
+        <button class="btn" id="btn-close-face-cluster-footer">ปิด</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── 5. Modal: Import Photos ───────────────────────────── -->
   <div id="modal-import" class="modal-backdrop" style="display: none;">
     <div class="modal-card">

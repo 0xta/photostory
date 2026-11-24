@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { FastifyPluginAsync } from 'fastify';
+import sharp from 'sharp';
 import db, { THUMBS_DIR, ftsUpsert, ftsDelete } from '../db.js';
 import { runClustering } from '../workers/cluster.js';
 import { haversine } from '../utils.js';
@@ -438,6 +439,34 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
       .get(photo.id);
 
     return { ...photo, cats, friends, faces, event, places, meal: meal || null };
+  });
+
+  // GET /api/photos/:id/view — optimized image view for inspection modals/lightbox
+  app.get<{ Params: { id: string } }>('/api/photos/:id/view', async (req, reply) => {
+    const photo = db.prepare('SELECT path FROM photos WHERE id = ?').get(req.params.id) as { path: string } | undefined;
+    if (!photo || !fs.existsSync(photo.path)) {
+      const thumbFile = path.join(THUMBS_DIR, `${req.params.id}.jpg`);
+      if (fs.existsSync(thumbFile)) {
+        return reply.type('image/jpeg').send(fs.createReadStream(thumbFile));
+      }
+      return reply.status(404).send({ error: 'Photo not found' });
+    }
+
+    try {
+      const buf = await sharp(photo.path)
+        .rotate()
+        .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      reply.header('Cache-Control', 'public, max-age=86400');
+      return reply.type('image/jpeg').send(buf);
+    } catch {
+      const thumbFile = path.join(THUMBS_DIR, `${req.params.id}.jpg`);
+      if (fs.existsSync(thumbFile)) {
+        return reply.type('image/jpeg').send(fs.createReadStream(thumbFile));
+      }
+      return reply.status(500).send({ error: 'Failed to process photo' });
+    }
   });
 
   // PATCH /api/photos/:id (note, taken_at, lat, lon)

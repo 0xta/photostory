@@ -557,7 +557,13 @@ async function openPhotoModal(photoId) {
     activePhotoIndex = loadedPhotos.findIndex((p) => p.id === photoId);
 
     document.getElementById('photo-modal-filename').textContent = photo.filename;
-    document.getElementById('photo-modal-img').src = `/api/thumbs/${photo.id}`;
+    const photoModalImg = document.getElementById('photo-modal-img');
+    if (photoModalImg) {
+      photoModalImg.src = `/api/photos/${photo.id}/view`;
+      photoModalImg.onerror = () => {
+        photoModalImg.src = `/api/thumbs/${photo.id}`;
+      };
+    }
 
     // Burst indicator
     const burstBadge = document.getElementById('photo-modal-burst-badge');
@@ -1364,13 +1370,29 @@ async function loadSuggestions() {
       let photosPreview = '';
       if (s.kind === 'face_cluster') {
         const photoIds = Array.isArray(p.photo_ids) ? p.photo_ids : [];
+        const repCropUrl = p.representative_face_id
+          ? `/api/faces/${p.representative_face_id}/crop`
+          : (p.cluster_id ? `/api/faces/clusters/${p.cluster_id}/crop` : '');
+
         photosPreview = `
-          <div style="display: flex; gap: 4px; margin-top: 0.4rem; overflow-x: auto;">
-            ${photoIds.slice(0, 4).map((pid) => `<img src="/api/thumbs/${pid}" style="width: 48px; height: 48px; border-radius: 4px; object-fit: cover; border: 1px solid var(--line);" />`).join('')}
-            ${photoIds.length > 4 ? `<span class="muted mono" style="align-self: center; font-size: 0.75rem; margin-left: 4px;">+${photoIds.length - 4}</span>` : ''}
+          <div class="face-cluster-card-body">
+            ${repCropUrl ? `
+              <div class="face-crop-avatar-box" title="คลิกเพื่อขยายและตรวจดู" onclick="openFaceClusterModal('${s.id}', '${p.cluster_id}', '${escapeHtml(p.suggested_name || '')}')" style="cursor: pointer;">
+                <img src="${repCropUrl}" class="face-card-crop-avatar" alt="Face Avatar" onerror="this.parentElement.style.display='none'" />
+                <span class="face-crop-tag">ใบหน้าเป้าหมาย</span>
+              </div>
+            ` : ''}
+            <div class="face-card-context-photos">
+              <span class="muted" style="font-size: 0.75rem;">พบในรูปภาพตัวอย่าง (${p.photo_count || photoIds.length} รูป):</span>
+              <div class="face-card-thumbs-strip">
+                ${photoIds.slice(0, 4).map((pid) => `<img src="/api/thumbs/${pid}" class="face-card-thumb" title="คลิกเพื่อขยายดู" onclick="openFaceClusterModal('${s.id}', '${p.cluster_id}', '${escapeHtml(p.suggested_name || '')}')" />`).join('')}
+                ${photoIds.length > 4 ? `<span class="muted mono" style="font-size: 0.75rem; margin-left: 4px;">+${photoIds.length - 4}</span>` : ''}
+              </div>
+            </div>
           </div>
-          <div style="margin-top: 0.5rem; display: flex; gap: 0.4rem; align-items: center;">
-            <input type="text" id="face-name-input-${s.id}" class="input input-sm" placeholder="พิมพ์ชื่อเพื่อน..." style="max-width: 180px;" value="" />
+          <div class="face-card-actions-row">
+            <input type="text" id="face-name-input-${s.id}" class="input input-sm" placeholder="พิมพ์ชื่อเพื่อน..." style="max-width: 170px;" value="" />
+            <button class="btn btn-sm" onclick="openFaceClusterModal('${s.id}', '${p.cluster_id}', '${escapeHtml(p.suggested_name || '')}')">🔍 ขยายดู / ตรวจสอบ</button>
           </div>
         `;
       } else if (s.kind === 'meal' && Array.isArray(p.photo_ids) && p.photo_ids.length > 0) {
@@ -1419,16 +1441,131 @@ async function loadSuggestions() {
   }
 }
 
-async function acceptSuggestion(id) {
+let currentClusterModalState = {
+  suggId: null,
+  clusterId: null,
+  members: [],
+  activeIndex: 0,
+};
+
+async function openFaceClusterModal(suggId, clusterId, suggestedName) {
   try {
-    const nameInput = document.getElementById(`face-name-input-${id}`);
-    const nameVal = nameInput ? nameInput.value.trim() : '';
+    currentClusterModalState = {
+      suggId,
+      clusterId,
+      members: [],
+      activeIndex: 0,
+    };
+
+    const titleEl = document.getElementById('face-cluster-modal-title');
+    if (titleEl) titleEl.textContent = `กลุ่มใบหน้า: ${suggestedName || 'เพื่อน'}`;
+
+    const nameInput = document.getElementById('face-cluster-modal-name-input');
+    if (nameInput) {
+      nameInput.value = suggestedName || '';
+      setTimeout(() => nameInput.focus(), 150);
+    }
+
+    const modal = document.getElementById('modal-face-cluster');
+    if (modal) modal.style.display = 'flex';
+
+    // Fetch cluster members
+    const res = await api(`/faces/clusters/${clusterId}`);
+    currentClusterModalState.members = res.members || [];
+
+    const photoCountEl = document.getElementById('face-cluster-modal-photo-count');
+    if (photoCountEl) photoCountEl.textContent = String(res.photo_count || 0);
+
+    const faceCountEl = document.getElementById('face-cluster-modal-face-count');
+    if (faceCountEl) faceCountEl.textContent = String(res.face_count || 0);
+
+    // Set avatar crop
+    const avatarEl = document.getElementById('face-cluster-modal-avatar');
+    if (avatarEl && res.members.length > 0) {
+      avatarEl.src = res.members[0].crop_url;
+    }
+
+    // Render thumbnail strip
+    const thumbsStrip = document.getElementById('face-cluster-modal-thumbs');
+    if (thumbsStrip) {
+      thumbsStrip.innerHTML = '';
+      currentClusterModalState.members.forEach((m, idx) => {
+        const img = document.createElement('img');
+        img.className = `face-cluster-strip-item ${idx === 0 ? 'active' : ''}`;
+        img.src = m.thumb_url;
+        img.title = m.filename;
+        img.addEventListener('click', () => {
+          switchClusterModalPhoto(idx);
+        });
+        thumbsStrip.appendChild(img);
+      });
+    }
+
+    // Switch to first member photo
+    if (currentClusterModalState.members.length > 0) {
+      switchClusterModalPhoto(0);
+    }
+  } catch (err) {
+    console.error('Failed to open face cluster modal:', err);
+    showToast('ไม่สามารถเปิดข้อมูลกลุ่มใบหน้าได้', 'error');
+  }
+}
+
+function switchClusterModalPhoto(index) {
+  const member = currentClusterModalState.members[index];
+  if (!member) return;
+  currentClusterModalState.activeIndex = index;
+
+  // Update strip active class
+  const strip = document.getElementById('face-cluster-modal-thumbs');
+  if (strip) {
+    const items = strip.querySelectorAll('.face-cluster-strip-item');
+    items.forEach((item, i) => {
+      if (i === index) item.classList.add('active');
+      else item.classList.remove('active');
+    });
+  }
+
+  // Update photo img & info
+  const photoImg = document.getElementById('face-cluster-modal-photo-img');
+  const bboxEl = document.getElementById('face-cluster-modal-bbox');
+  const filenameEl = document.getElementById('face-cluster-modal-filename');
+  const avatarEl = document.getElementById('face-cluster-modal-avatar');
+
+  if (filenameEl) filenameEl.textContent = member.filename;
+  if (avatarEl && member.crop_url) avatarEl.src = member.crop_url;
+
+  if (photoImg && bboxEl) {
+    photoImg.src = `/api/photos/${member.photo_id}/view`;
+    photoImg.onerror = () => {
+      photoImg.src = member.thumb_url;
+    };
+
+    // Position bounding box
+    const bbox = member.bbox || { x: 0, y: 0, w: 0.1, h: 0.1 };
+    bboxEl.style.left = `${(bbox.x * 100).toFixed(2)}%`;
+    bboxEl.style.top = `${(bbox.y * 100).toFixed(2)}%`;
+    bboxEl.style.width = `${(bbox.w * 100).toFixed(2)}%`;
+    bboxEl.style.height = `${(bbox.h * 100).toFixed(2)}%`;
+  }
+}
+
+async function acceptSuggestion(id, customName) {
+  try {
+    let nameVal = '';
+    if (typeof customName === 'string' && customName.trim()) {
+      nameVal = customName.trim();
+    } else {
+      const nameInput = document.getElementById(`face-name-input-${id}`);
+      if (nameInput) nameVal = nameInput.value.trim();
+    }
     const body = nameVal ? { person_name: nameVal } : {};
     await api(`/suggestions/${id}/accept`, {
       method: 'POST',
       body,
     });
     showToast('ยอมรับข้อเสนอเรียบร้อย', 'success');
+    closeAllModals();
     loadSuggestions();
     loadStories();
     loadPlaces();
@@ -2131,6 +2268,19 @@ async function init() {
   document.getElementById('btn-close-meal-footer')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-close-import')?.addEventListener('click', closeAllModals);
   document.getElementById('btn-cancel-import')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-face-cluster')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-close-face-cluster-footer')?.addEventListener('click', closeAllModals);
+  document.getElementById('btn-face-cluster-accept')?.addEventListener('click', async () => {
+    if (!currentClusterModalState.suggId) return;
+    const nameInput = document.getElementById('face-cluster-modal-name-input');
+    const nameVal = nameInput ? nameInput.value.trim() : '';
+    await acceptSuggestion(currentClusterModalState.suggId, nameVal);
+  });
+  document.getElementById('btn-face-cluster-dismiss')?.addEventListener('click', async () => {
+    if (!currentClusterModalState.suggId) return;
+    await dismissSuggestion(currentClusterModalState.suggId);
+    closeAllModals();
+  });
 
   // Backdrop click closes modals
   document.querySelectorAll('.modal-backdrop').forEach((backdrop) => {
