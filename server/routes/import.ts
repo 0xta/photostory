@@ -58,6 +58,7 @@ export const importRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ error: 'Thumbnail not found' });
     }
     const stream = fs.createReadStream(thumbFile);
+    reply.header('Cache-Control', 'public, max-age=31536000, immutable');
     return reply.type('image/jpeg').send(stream);
   });
 };

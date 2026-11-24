@@ -24,11 +24,19 @@ const THAI_MONTHS_ABBR = [
   'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
 ];
 
+const THAI_MONTHS = [
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
+];
+
 // ── Application State ────────────────────────────────────────
 let currentTab = 'dashboard';
 let settings = {};
 let allFriends = [];
 let loadedPhotos = [];
+let photosCurrentPage = 1;
+let photosPerPage = 40;
+let photosTotalCount = 0;
 let activePhotoIndex = -1;
 let currentEventDetail = null;
 let currentFriendDetail = null;
@@ -481,7 +489,37 @@ async function loadEvents() {
       return;
     }
 
+    let lastMonthKey = '';
     res.items.forEach((ev, idx) => {
+      // Group events by Month / Year header
+      let monthKey = 'nodate';
+      let monthDisplay = '📅 เหตุการณ์ไม่มีวันที่ระบุ';
+      if (ev.ts_start) {
+        const d = new Date(ev.ts_start);
+        const y = d.getFullYear() + 543;
+        const m = THAI_MONTHS[d.getMonth()] || '';
+        monthKey = `${d.getFullYear()}-${d.getMonth()}`;
+        monthDisplay = `📅 ${m} ${y}`;
+      }
+
+      if (monthKey !== lastMonthKey) {
+        lastMonthKey = monthKey;
+        const countInMonth = res.items.filter((item) => {
+          if (!item.ts_start && monthKey === 'nodate') return true;
+          if (!item.ts_start) return false;
+          const idDate = new Date(item.ts_start);
+          return `${idDate.getFullYear()}-${idDate.getMonth()}` === monthKey;
+        }).length;
+
+        const headerEl = document.createElement('div');
+        headerEl.className = 'event-month-header';
+        headerEl.innerHTML = `
+          <span class="event-month-title">${monthDisplay}</span>
+          <span class="event-month-count mono">${countInMonth} เหตุการณ์</span>
+        `;
+        container.appendChild(headerEl);
+      }
+
       container.appendChild(createEventCard(ev, idx + 1));
     });
   } catch (err) {
@@ -568,7 +606,8 @@ async function openEventDetail(eventId) {
 }
 
 // ── Photos View & Filtering (FR-401..405, 601) ────────────────
-async function loadPhotos() {
+async function loadPhotos(page = photosCurrentPage) {
+  photosCurrentPage = page;
   try {
     // Build query params
     const params = new URLSearchParams();
@@ -578,21 +617,53 @@ async function loadPhotos() {
     if (photoFilters.gps) params.set('gps', photoFilters.gps);
     if (photoFilters.burst) params.set('burst', '1');
     if (photoFilters.q) params.set('q', photoFilters.q);
-    params.set('limit', '200');
+
+    params.set('limit', String(photosPerPage));
+    const offset = Math.max(0, (photosCurrentPage - 1) * photosPerPage);
+    params.set('offset', String(offset));
 
     const res = await api(`/photos?${params.toString()}`);
     loadedPhotos = res.items;
+    photosTotalCount = res.total !== undefined ? res.total : res.items.length;
+
+    const totalPages = Math.max(1, Math.ceil(photosTotalCount / photosPerPage));
+    if (photosCurrentPage > totalPages) {
+      photosCurrentPage = totalPages;
+    }
 
     const container = document.getElementById('photos-list');
     container.innerHTML = '';
+
+    const startIdx = photosTotalCount === 0 ? 0 : offset + 1;
+    const endIdx = Math.min(offset + res.items.length, photosTotalCount);
+
+    const rangeInfoEl = document.getElementById('photos-range-info');
+    const totalInfoEl = document.getElementById('photos-total-info');
+    const pageInfoEl = document.getElementById('photos-page-info');
+
+    if (rangeInfoEl) rangeInfoEl.textContent = `${startIdx} - ${endIdx}`;
+    if (totalInfoEl) totalInfoEl.textContent = photosTotalCount;
+    if (pageInfoEl) pageInfoEl.textContent = `หน้า ${photosCurrentPage} / ${totalPages}`;
+
+    // Update pagination buttons state
+    const firstBtn = document.getElementById('btn-photos-first');
+    const prevBtn = document.getElementById('btn-photos-prev');
+    const nextBtn = document.getElementById('btn-photos-next');
+    const lastBtn = document.getElementById('btn-photos-last');
+
+    if (firstBtn) firstBtn.disabled = photosCurrentPage <= 1;
+    if (prevBtn) prevBtn.disabled = photosCurrentPage <= 1;
+    if (nextBtn) nextBtn.disabled = photosCurrentPage >= totalPages;
+    if (lastBtn) lastBtn.disabled = photosCurrentPage >= totalPages;
+
     if (photoFilters.q) {
       const topScore =
         res.items.length > 0 && res.items[0].score
           ? ` · คะแนนสูงสุด ${Math.round(res.items[0].score * 100)}%`
           : '';
-      document.getElementById('photos-filter-count').textContent = `ค้นพบ ${res.items.length} รูป (เรียงตามคะแนนความคล้าย${topScore})`;
+      document.getElementById('photos-filter-count').textContent = `ค้นพบ ${photosTotalCount} รูป${topScore}`;
     } else {
-      document.getElementById('photos-filter-count').textContent = `แสดง ${res.items.length} จาก ${res.total} รูป`;
+      document.getElementById('photos-filter-count').textContent = `ทั้งหมด ${photosTotalCount} รูป`;
     }
 
     if (res.items.length === 0) {
@@ -1510,38 +1581,92 @@ function renderMapMarkers(fit = false) {
   mapMarkersLayer.clearLayers();
 
   if (currentMapMode === 'photos') {
+    // Cluster photos sharing identical or close coordinates (~110m grid)
+    const clusterMap = new Map();
+
     mapData.features.forEach((f) => {
       const [lon, lat] = f.geometry.coordinates;
-      const icon = L.divIcon({
-        className: 'custom-map-icon',
-        html: `<div class="map-photo-pin" title="${escapeHtml(f.properties.filename)}"><img src="/api/thumbs/${f.properties.id}" alt="" /></div>`,
-        iconSize: [38, 38],
-        iconAnchor: [19, 19],
-        popupAnchor: [0, -20],
-      });
+      const key = `${lat.toFixed(3)}_${lon.toFixed(3)}`;
+      if (!clusterMap.has(key)) {
+        clusterMap.set(key, { lat, lon, photos: [] });
+      }
+      clusterMap.get(key).photos.push(f);
+    });
 
-      const marker = L.marker([lat, lon], { icon });
-      const catsHtml = (f.properties.cats || [])
-        .map((c) => `<span class="cat-chip active" style="font-size:0.68rem;padding:1px 6px;">${escapeHtml(c)}</span>`)
-        .join(' ');
+    clusterMap.forEach((cluster) => {
+      if (cluster.photos.length === 1) {
+        const f = cluster.photos[0];
+        const [lon, lat] = f.geometry.coordinates;
+        const icon = L.divIcon({
+          className: 'custom-map-icon',
+          html: `<div class="map-photo-pin" title="${escapeHtml(f.properties.filename)}"><img src="/api/thumbs/${f.properties.id}" alt="" /></div>`,
+          iconSize: [38, 38],
+          iconAnchor: [19, 19],
+          popupAnchor: [0, -20],
+        });
 
-      const popupContent = `
-        <div class="map-popup-card">
-          <img src="/api/thumbs/${f.properties.id}" alt="${escapeHtml(f.properties.filename)}" />
-          <div class="map-popup-title">${escapeHtml(f.properties.filename)}</div>
-          <div class="map-popup-meta">
-            <div>📅 ${formatThaiDate(f.properties.taken_at)} ${formatTime(f.properties.taken_at)}</div>
-            ${f.properties.event_name ? `<div>🎞️ ${escapeHtml(f.properties.event_name)}</div>` : ''}
-            ${catsHtml ? `<div style="margin-top:4px;">${catsHtml}</div>` : ''}
+        const marker = L.marker([lat, lon], { icon });
+        const catsHtml = (f.properties.cats || [])
+          .map((c) => `<span class="cat-chip active" style="font-size:0.68rem;padding:1px 6px;">${escapeHtml(c)}</span>`)
+          .join(' ');
+
+        const popupContent = `
+          <div class="map-popup-card">
+            <img src="/api/thumbs/${f.properties.id}" alt="${escapeHtml(f.properties.filename)}" />
+            <div class="map-popup-title">${escapeHtml(f.properties.filename)}</div>
+            <div class="map-popup-meta">
+              <div>📅 ${formatThaiDate(f.properties.taken_at)} ${formatTime(f.properties.taken_at)}</div>
+              ${f.properties.event_name ? `<div>🎞️ ${escapeHtml(f.properties.event_name)}</div>` : ''}
+              ${catsHtml ? `<div style="margin-top:4px;">${catsHtml}</div>` : ''}
+            </div>
+            <div style="display:flex; gap:0.4rem;">
+              <button class="btn btn-sm btn-primary" onclick="openPhotoModal('${f.properties.id}')" style="flex:1;">🔍 ดูรูปใหญ่</button>
+              <button class="btn btn-sm" onclick="findNearbyPhotos(${lat}, ${lon})" title="ค้นหารูปใกล้จุดนี้">📍 ใกล้เคียง</button>
+            </div>
           </div>
-          <div style="display:flex; gap:0.4rem;">
-            <button class="btn btn-sm btn-primary" onclick="openPhotoModal('${f.properties.id}')" style="flex:1;">🔍 ดูรูปใหญ่</button>
-            <button class="btn btn-sm" onclick="findNearbyPhotos(${lat}, ${lon})" title="ค้นหารูปใกล้จุดนี้">📍 ใกล้เคียง</button>
+        `;
+        marker.bindPopup(popupContent);
+        mapMarkersLayer.addLayer(marker);
+      } else {
+        // Multi-photo cluster pin (Marker clustering)
+        const count = cluster.photos.length;
+        const icon = L.divIcon({
+          className: 'custom-map-cluster-icon',
+          html: `
+            <div class="map-cluster-pin" title="${count} รูปภาพในบริเวณนี้">
+              <span>${count}</span>
+            </div>
+          `,
+          iconSize: [38, 38],
+          iconAnchor: [19, 19],
+          popupAnchor: [0, -20],
+        });
+
+        const marker = L.marker([cluster.lat, cluster.lon], { icon });
+
+        // Preview grid of up to 4 photos
+        let thumbsGrid = '<div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 6px;">';
+        cluster.photos.slice(0, 4).forEach((p) => {
+          thumbsGrid += `<img src="/api/thumbs/${p.properties.id}" style="width:100%; height:55px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="openPhotoModal('${p.properties.id}')" title="คลิกเพื่อดูรูป" />`;
+        });
+        thumbsGrid += '</div>';
+
+        const popupContent = `
+          <div class="map-popup-card">
+            ${thumbsGrid}
+            <div class="map-popup-title">📍 กลุ่มภาพ ${count} รูป</div>
+            <div class="map-popup-meta">
+              <div>📍 พิกัด: ${formatGps(cluster.lat, cluster.lon)}</div>
+            </div>
+            <div style="display:flex; gap:0.4rem;">
+              <button class="btn btn-sm btn-primary" onclick="mapInstance.flyTo([${cluster.lat}, ${cluster.lon}], 17, {duration: 0.8})" style="flex:1;">🔎 ซูมจุดนี้</button>
+              <button class="btn btn-sm" onclick="findNearbyPhotos(${cluster.lat}, ${cluster.lon})" title="ค้นหารูปใกล้จุดนี้">📍 ใกล้เคียง</button>
+            </div>
           </div>
-        </div>
-      `;
-      marker.bindPopup(popupContent);
-      mapMarkersLayer.addLayer(marker);
+        `;
+        marker.bindPopup(popupContent);
+        mapMarkersLayer.addLayer(marker);
+      }
     });
   } else {
     mapData.events.forEach((e) => {
@@ -2988,7 +3113,7 @@ async function init() {
         filterCatsContainer.querySelectorAll('.cat-chip').forEach((c) => c.classList.remove('active'));
         chip.classList.add('active');
       }
-      loadPhotos();
+      loadPhotos(1);
     });
     filterCatsContainer.appendChild(chip);
   });
@@ -2996,19 +3121,19 @@ async function init() {
   // Filter Dropdowns
   document.getElementById('filter-friend')?.addEventListener('change', (e) => {
     photoFilters.person = e.target.value;
-    loadPhotos();
+    loadPhotos(1);
   });
   document.getElementById('filter-month')?.addEventListener('change', (e) => {
     photoFilters.month = e.target.value;
-    loadPhotos();
+    loadPhotos(1);
   });
   document.getElementById('filter-gps')?.addEventListener('change', (e) => {
     photoFilters.gps = e.target.value;
-    loadPhotos();
+    loadPhotos(1);
   });
   document.getElementById('filter-burst')?.addEventListener('change', (e) => {
     photoFilters.burst = e.target.checked;
-    loadPhotos();
+    loadPhotos(1);
   });
 
   // Clear filters
@@ -3026,7 +3151,39 @@ async function init() {
     document.getElementById('filter-gps').value = '';
     document.getElementById('filter-burst').checked = false;
     document.getElementById('input-global-search').value = '';
-    loadPhotos();
+    loadPhotos(1);
+  });
+
+  // Photos pagination controls
+  document.getElementById('photos-per-page')?.addEventListener('change', (e) => {
+    photosPerPage = Number(e.target.value) || 40;
+    loadPhotos(1);
+  });
+
+  document.getElementById('btn-photos-first')?.addEventListener('click', () => {
+    if (photosCurrentPage > 1) {
+      loadPhotos(1);
+    }
+  });
+
+  document.getElementById('btn-photos-prev')?.addEventListener('click', () => {
+    if (photosCurrentPage > 1) {
+      loadPhotos(photosCurrentPage - 1);
+    }
+  });
+
+  document.getElementById('btn-photos-next')?.addEventListener('click', () => {
+    const totalPages = Math.max(1, Math.ceil(photosTotalCount / photosPerPage));
+    if (photosCurrentPage < totalPages) {
+      loadPhotos(photosCurrentPage + 1);
+    }
+  });
+
+  document.getElementById('btn-photos-last')?.addEventListener('click', () => {
+    const totalPages = Math.max(1, Math.ceil(photosTotalCount / photosPerPage));
+    if (photosCurrentPage < totalPages) {
+      loadPhotos(totalPages);
+    }
   });
 
   // Global search input (debounce)

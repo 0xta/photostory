@@ -235,8 +235,16 @@
             <label for="filter-burst" style="font-size: 0.85rem; cursor: pointer;">⚡ รัวช็อตเท่านั้น</label>
           </div>
 
-          <div style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+          <div style="margin-left: auto; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
             <span class="muted mono" id="photos-filter-count" style="font-size: 0.82rem;">0 รูป</span>
+            <div style="display: flex; align-items: center; gap: 0.35rem;">
+              <label for="photos-per-page" class="muted" style="font-size: 0.8rem;">ต่อหน้า:</label>
+              <select id="photos-per-page" class="input input-sm" style="padding: 0.2rem 0.4rem; height: 28px;">
+                <option value="20">20 รูป</option>
+                <option value="40" selected>40 รูป</option>
+                <option value="60">60 รูป</option>
+              </select>
+            </div>
             <button class="btn btn-sm" id="btn-clear-filters">ล้างตัวกรอง</button>
           </div>
         </div>
@@ -244,6 +252,20 @@
 
       <!-- Photo Grid -->
       <div class="photos-grid" id="photos-list" style="margin-top: 1rem;"></div>
+
+      <!-- Photos Pagination Toolbar -->
+      <div id="photos-pagination" class="card flex-between" style="margin-top: 1.2rem; padding: 0.6rem 1rem; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="muted" style="font-size: 0.85rem;">แสดงรูปที่ <strong id="photos-range-info" class="mono">0 - 0</strong> จากทั้งหมด <strong id="photos-total-info" class="mono">0</strong> รูป</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.35rem;">
+          <button class="btn btn-sm" id="btn-photos-first" title="หน้าแรก">« หน้าแรก</button>
+          <button class="btn btn-sm" id="btn-photos-prev" title="หน้าก่อนหน้า">‹ ก่อนหน้า</button>
+          <span id="photos-page-info" class="mono" style="font-size: 0.85rem; padding: 0 0.6rem; font-weight: 500;">หน้า 1 / 1</span>
+          <button class="btn btn-sm" id="btn-photos-next" title="หน้าถัดไป">ถัดไป ›</button>
+          <button class="btn btn-sm" id="btn-photos-last" title="หน้าสุดท้าย">หน้าสุดท้าย »</button>
+        </div>
+      </div>
     </section>
 
     <!-- ── Friends View (FR-501..505) ── -->
