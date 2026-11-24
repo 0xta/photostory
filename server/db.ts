@@ -6,10 +6,11 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { DEFAULT_SETTINGS } from './utils.js';
 
-const DATA_DIR = path.resolve('data');
-const DB_PATH = path.join(DATA_DIR, 'story.db');
-const THUMBS_DIR = path.join(DATA_DIR, 'thumbs');
-const RECAPS_DIR = path.join(DATA_DIR, 'recaps');
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve('data');
+const isTest = process.env.NODE_ENV === 'test';
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, isTest ? 'test_story.db' : 'story.db');
+const THUMBS_DIR = process.env.THUMBS_DIR || path.join(DATA_DIR, isTest ? 'test_thumbs' : 'thumbs');
+const RECAPS_DIR = process.env.RECAPS_DIR || path.join(DATA_DIR, isTest ? 'test_recaps' : 'recaps');
 
 // Ensure data directories exist
 for (const dir of [DATA_DIR, THUMBS_DIR, RECAPS_DIR]) {
