@@ -231,4 +231,257 @@ export const insightsRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/api/insights/relationships', relationshipsHandler);
   app.get('/insights/relationships', relationshipsHandler);
+
+  // ── FR-1403: Social Graph (แผนผังเครือข่ายเพื่อน) ────────────────
+  const socialGraphHandler = async () => {
+    // 1. Fetch nodes (Persons)
+    const persons = db
+      .prepare(`
+        SELECT
+          pr.id, pr.name, pr.nick, pr.color, pr.note,
+          COUNT(DISTINCT pp.photo_id) as photo_count,
+          COUNT(DISTINCT p.event_id) as event_count
+        FROM persons pr
+        LEFT JOIN photo_persons pp ON pr.id = pp.person_id AND pp.source != 'face-suggestion'
+        LEFT JOIN photos p ON pp.photo_id = p.id
+        GROUP BY pr.id
+        ORDER BY photo_count DESC, pr.name ASC
+      `)
+      .all() as any[];
+
+    // 2. Fetch shared photos
+    const sharedPhotos = db
+      .prepare(`
+        SELECT
+          pp1.person_id as p1,
+          pp2.person_id as p2,
+          COUNT(DISTINCT pp1.photo_id) as shared_photos
+        FROM photo_persons pp1
+        JOIN photo_persons pp2 ON pp1.photo_id = pp2.photo_id AND pp1.person_id < pp2.person_id
+        WHERE pp1.source != 'face-suggestion' AND pp2.source != 'face-suggestion'
+        GROUP BY pp1.person_id, pp2.person_id
+      `)
+      .all() as Array<{ p1: string; p2: string; shared_photos: number }>;
+
+    const sharedPhotoMap = new Map<string, number>();
+    for (const sp of sharedPhotos) {
+      sharedPhotoMap.set(`${sp.p1}__${sp.p2}`, sp.shared_photos);
+    }
+
+    // 3. Fetch shared events
+    const sharedEventsRows = db
+      .prepare(`
+        SELECT
+          pp1.person_id as p1,
+          pp2.person_id as p2,
+          p1.event_id,
+          e.name as event_name,
+          e.place as event_place,
+          e.ts_start
+        FROM photo_persons pp1
+        JOIN photos p1 ON pp1.photo_id = p1.id
+        JOIN photo_persons pp2 ON pp1.person_id < pp2.person_id
+        JOIN photos p2 ON pp2.photo_id = p2.id AND p1.event_id = p2.event_id
+        LEFT JOIN events e ON p1.event_id = e.id
+        WHERE p1.event_id IS NOT NULL
+          AND pp1.source != 'face-suggestion'
+          AND pp2.source != 'face-suggestion'
+        GROUP BY pp1.person_id, pp2.person_id, p1.event_id
+        ORDER BY e.ts_start ASC
+      `)
+      .all() as Array<{
+        p1: string;
+        p2: string;
+        event_id: string;
+        event_name: string | null;
+        event_place: string | null;
+        ts_start: number | null;
+      }>;
+
+    // Group shared events by pair
+    const pairMap = new Map<
+      string,
+      {
+        source: string;
+        target: string;
+        shared_events: Array<{ id: string; name: string; place: string | null; ts_start: number | null }>;
+        shared_photos_count: number;
+        weight: number;
+      }
+    >();
+
+    for (const row of sharedEventsRows) {
+      const key = `${row.p1}__${row.p2}`;
+      if (!pairMap.has(key)) {
+        pairMap.set(key, {
+          source: row.p1,
+          target: row.p2,
+          shared_events: [],
+          shared_photos_count: sharedPhotoMap.get(key) || 0,
+          weight: 0,
+        });
+      }
+      const pair = pairMap.get(key)!;
+      pair.shared_events.push({
+        id: row.event_id,
+        name: row.event_name || 'เหตุการณ์',
+        place: row.event_place || null,
+        ts_start: row.ts_start,
+      });
+      pair.weight = pair.shared_events.length;
+    }
+
+    // Also include pairs that share photos but whose event_id was null
+    for (const sp of sharedPhotos) {
+      const key = `${sp.p1}__${sp.p2}`;
+      if (!pairMap.has(key)) {
+        pairMap.set(key, {
+          source: sp.p1,
+          target: sp.p2,
+          shared_events: [],
+          shared_photos_count: sp.shared_photos,
+          weight: Math.max(1, Math.round(sp.shared_photos / 2)),
+        });
+      }
+    }
+
+    const edges = Array.from(pairMap.values()).sort(
+      (a, b) => b.weight - a.weight || b.shared_photos_count - a.shared_photos_count
+    );
+
+    return {
+      nodes: persons,
+      edges,
+      stats: {
+        total_nodes: persons.length,
+        total_edges: edges.length,
+        active_connections: edges.filter((e) => e.weight > 0).length,
+      },
+    };
+  };
+
+  app.get('/api/insights/social-graph', socialGraphHandler);
+  app.get('/insights/social-graph', socialGraphHandler);
+
+  // ── FR-1406 / AC-34: Personal Life Map & Heatmap (แผนที่ชีวิต) ────
+  const mapHandler = async (req: any) => {
+    const yearParam = req.query?.year;
+    const catParam = req.query?.cat;
+
+    const conditions: string[] = ['p.lat IS NOT NULL', 'p.lon IS NOT NULL'];
+    const params: any[] = [];
+
+    if (yearParam) {
+      conditions.push("CAST(strftime('%Y', datetime(p.taken_at / 1000, 'unixepoch')) AS INTEGER) = ?");
+      params.push(parseInt(yearParam, 10));
+    }
+    if (catParam) {
+      conditions.push('p.id IN (SELECT photo_id FROM photo_cats WHERE cat = ?)');
+      params.push(catParam);
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    // 1. Grouped coordinate frequency for heatmap
+    const heatRows = db
+      .prepare(`
+        SELECT
+          ROUND(p.lat, 4) as lat,
+          ROUND(p.lon, 4) as lon,
+          COUNT(*) as count
+        FROM photos p
+        ${whereClause}
+        GROUP BY ROUND(p.lat, 4), ROUND(p.lon, 4)
+        ORDER BY count DESC
+      `)
+      .all(...params) as Array<{ lat: number; lon: number; count: number }>;
+
+    let maxCount = 1;
+    for (const h of heatRows) {
+      if (h.count > maxCount) maxCount = h.count;
+    }
+
+    const heatmap = heatRows.map((h) => ({
+      lat: h.lat,
+      lon: h.lon,
+      count: h.count,
+      intensity: Math.min(1.0, Math.round((h.count / maxCount) * 100) / 100),
+    }));
+
+    // 2. Most-visited places
+    const mostVisited = db
+      .prepare(`
+        SELECT
+          COALESCE(pl.name, e.place, 'จุดพิกัด ' || ROUND(p.lat, 3) || ', ' || ROUND(p.lon, 3)) as name,
+          ROUND(p.lat, 3) as lat,
+          ROUND(p.lon, 3) as lon,
+          COUNT(DISTINCT p.id) as photo_count,
+          COUNT(DISTINCT p.event_id) as event_count,
+          MIN(p.taken_at) as first_visit,
+          MAX(p.taken_at) as last_visit
+        FROM photos p
+        LEFT JOIN events e ON p.event_id = e.id
+        LEFT JOIN photo_places pp ON p.id = pp.photo_id
+        LEFT JOIN places pl ON pp.place_id = pl.id
+        ${whereClause}
+        GROUP BY ROUND(p.lat, 3), ROUND(p.lon, 3)
+        ORDER BY photo_count DESC
+        LIMIT 10
+      `)
+      .all(...params) as any[];
+
+    // 3. Events with GPS
+    const gpsEvents = db
+      .prepare(`
+        SELECT
+          e.id, e.name, e.place, e.lat, e.lon, e.ts_start, e.ts_end,
+          (SELECT COUNT(*) FROM photos WHERE event_id = e.id) as photo_count
+        FROM events e
+        WHERE e.lat IS NOT NULL AND e.lon IS NOT NULL
+        ORDER BY photo_count DESC
+      `)
+      .all() as any[];
+
+    // 4. Bounds and center
+    let minLat = 90,
+      maxLat = -90,
+      minLon = 180,
+      maxLon = -180;
+    let sumLat = 0,
+      sumLon = 0,
+      totalGps = 0;
+
+    for (const h of heatRows) {
+      if (h.lat < minLat) minLat = h.lat;
+      if (h.lat > maxLat) maxLat = h.lat;
+      if (h.lon < minLon) minLon = h.lon;
+      if (h.lon > maxLon) maxLon = h.lon;
+      sumLat += h.lat * h.count;
+      sumLon += h.lon * h.count;
+      totalGps += h.count;
+    }
+
+    const center = totalGps > 0 ? [sumLat / totalGps, sumLon / totalGps] : [13.7563, 100.5018]; // Default Bangkok
+
+    return {
+      heatmap,
+      most_visited: mostVisited,
+      events: gpsEvents,
+      summary: {
+        total_gps_photos: totalGps,
+        unique_points: heatRows.length,
+        total_gps_events: gpsEvents.length,
+        max_heat: maxCount,
+        bounds:
+          totalGps > 0
+            ? { min_lat: minLat, max_lat: maxLat, min_lon: minLon, max_lon: maxLon }
+            : null,
+        center,
+      },
+    };
+  };
+
+  app.get('/api/map', mapHandler);
+  app.get('/map', mapHandler);
+  app.get('/api/map/heatmap', mapHandler);
 };

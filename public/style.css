@@ -2031,6 +2031,53 @@ body {
   color: #34D399;
 }
 
+/* ── Phase 5: Map Heatmap & Top Places ─────────────────────── */
+.map-top-place-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.map-top-place-item:hover {
+  border-color: var(--accent);
+  background: var(--panel);
+  transform: translateX(2px);
+}
+.map-top-place-rank {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 20px;
+  text-align: center;
+}
+.map-top-place-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-top-place-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.map-top-place-count {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--accent);
+  background: rgba(240, 166, 60, 0.12);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: monospace;
+  white-space: nowrap;
+}
+
 /* ── Responsive Mobile ────────────────────────────────────── */
 @media (max-width: 390px) {
   .app-header { padding: 0.5rem 0.6rem; flex-wrap: wrap; }

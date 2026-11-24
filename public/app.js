@@ -930,6 +930,317 @@ async function loadFriends() {
   }
 }
 
+// ── Social Graph (FR-1403: Vanilla Canvas Simulation) ─────────
+let socialGraphData = null;
+let socialGraphAnimId = null;
+
+async function loadSocialGraph() {
+  const container = document.getElementById('social-graph-container');
+  if (!container) return;
+  container.style.display = 'block';
+
+  try {
+    const data = await api('/insights/social-graph');
+    socialGraphData = data;
+    initSocialGraphCanvas(data);
+  } catch (err) {
+    console.error('Failed to load social graph:', err);
+    showToast('ไม่สามารถดึงข้อมูลแผนผังเครือข่ายเพื่อนได้', 'error');
+  }
+}
+
+function initSocialGraphCanvas(data) {
+  const canvas = document.getElementById('social-graph-canvas');
+  const tooltip = document.getElementById('social-graph-tooltip');
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+
+  if (socialGraphAnimId) {
+    cancelAnimationFrame(socialGraphAnimId);
+    socialGraphAnimId = null;
+  }
+
+  const nodes = (data.nodes || []).map((n, i) => {
+    const angle = (i / Math.max(1, data.nodes.length)) * Math.PI * 2;
+    const r = Math.min(width, height) * 0.35;
+    return {
+      ...n,
+      x: width / 2 + Math.cos(angle) * r + (Math.random() - 0.5) * 40,
+      y: height / 2 + Math.sin(angle) * r + (Math.random() - 0.5) * 40,
+      vx: 0,
+      vy: 0,
+      radius: Math.max(22, Math.min(38, 18 + (n.photo_count || 1) * 2)),
+    };
+  });
+
+  const nodeMap = new Map();
+  nodes.forEach((n) => nodeMap.set(n.id, n));
+
+  const edges = (data.edges || [])
+    .map((e) => ({
+      ...e,
+      sourceNode: nodeMap.get(e.source),
+      targetNode: nodeMap.get(e.target),
+    }))
+    .filter((e) => e.sourceNode && e.targetNode);
+
+  let draggedNode = null;
+  let hoveredNode = null;
+  let hoveredEdge = null;
+
+  function simulate() {
+    // Force-directed repulsion between nodes
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[j].x - nodes[i].x;
+        const dy = nodes[j].y - nodes[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        if (dist < 260) {
+          const force = ((260 - dist) / dist) * 0.04;
+          nodes[i].vx -= dx * force;
+          nodes[i].vy -= dy * force;
+          nodes[j].vx += dx * force;
+          nodes[j].vy += dy * force;
+        }
+      }
+    }
+
+    // Spring attraction along edges
+    for (const e of edges) {
+      const dx = e.targetNode.x - e.sourceNode.x;
+      const dy = e.targetNode.y - e.sourceNode.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const targetDist = 140;
+      const force = (dist - targetDist) * 0.015 * Math.min(3, 0.8 + e.weight * 0.2);
+      e.sourceNode.vx += (dx / dist) * force;
+      e.sourceNode.vy += (dy / dist) * force;
+      e.targetNode.vx -= (dx / dist) * force;
+      e.targetNode.vy -= (dy / dist) * force;
+    }
+
+    // Pull toward center and damp
+    for (const n of nodes) {
+      if (n === draggedNode) continue;
+      n.vx += (width / 2 - n.x) * 0.005;
+      n.vy += (height / 2 - n.y) * 0.005;
+      n.vx *= 0.82;
+      n.vy *= 0.82;
+      n.x += n.vx;
+      n.y += n.vy;
+
+      // Keep in canvas bounds
+      n.x = Math.max(n.radius + 10, Math.min(width - n.radius - 10, n.x));
+      n.y = Math.max(n.radius + 10, Math.min(height - n.radius - 10, n.y));
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw background subtle grid lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.lineWidth = 1;
+    for (let x = 40; x < width; x += 40) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+    for (let y = 40; y < height; y += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+
+    // Draw edges
+    for (const e of edges) {
+      const isHovered = hoveredEdge === e;
+      ctx.beginPath();
+      ctx.moveTo(e.sourceNode.x, e.sourceNode.y);
+      ctx.lineTo(e.targetNode.x, e.targetNode.y);
+      ctx.strokeStyle = isHovered ? '#F0A63C' : 'rgba(240, 166, 60, 0.35)';
+      ctx.lineWidth = Math.min(8, Math.max(2, e.weight * 2));
+      ctx.stroke();
+
+      // Draw weight badge on edge center if weight >= 2
+      if (e.weight >= 2 || isHovered) {
+        const mx = (e.sourceNode.x + e.targetNode.x) / 2;
+        const my = (e.sourceNode.y + e.targetNode.y) / 2;
+        ctx.fillStyle = isHovered ? '#F0A63C' : '#222836';
+        ctx.beginPath();
+        ctx.arc(mx, my, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#F0A63C';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = isHovered ? '#12151B' : '#EDE7DA';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(e.weight), mx, my);
+      }
+    }
+
+    // Draw nodes
+    for (const n of nodes) {
+      const isHovered = hoveredNode === n;
+      const color = n.color || '#79C7B4';
+
+      // Outer glow on hover
+      if (isHovered) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.radius + 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(240, 166, 60, 0.35)';
+        ctx.fill();
+      }
+
+      // Node circle
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = isHovered ? 3 : 2;
+      ctx.strokeStyle = isHovered ? '#FFF' : '#1A1E27';
+      ctx.stroke();
+
+      // Avatar Letter
+      ctx.fillStyle = '#12151B';
+      ctx.font = `bold ${Math.round(n.radius * 0.9)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(n.name.charAt(0), n.x, n.y);
+
+      // Name Label below
+      ctx.fillStyle = '#EDE7DA';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(n.name, n.x, n.y + n.radius + 14);
+    }
+  }
+
+  function loop() {
+    simulate();
+    draw();
+    socialGraphAnimId = requestAnimationFrame(loop);
+  }
+  loop();
+
+  // Mouse interaction
+  function getCanvasPos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (evt.clientX - rect.left) * scaleX,
+      y: (evt.clientY - rect.top) * scaleY,
+    };
+  }
+
+  canvas.onmousedown = (evt) => {
+    const pos = getCanvasPos(evt);
+    for (const n of nodes) {
+      const dx = pos.x - n.x;
+      const dy = pos.y - n.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= n.radius) {
+        draggedNode = n;
+        break;
+      }
+    }
+  };
+
+  canvas.onmousemove = (evt) => {
+    const pos = getCanvasPos(evt);
+    if (draggedNode) {
+      draggedNode.x = pos.x;
+      draggedNode.y = pos.y;
+      return;
+    }
+
+    // Check hovered node
+    hoveredNode = null;
+    for (const n of nodes) {
+      const dx = pos.x - n.x;
+      const dy = pos.y - n.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= n.radius) {
+        hoveredNode = n;
+        break;
+      }
+    }
+
+    // Check hovered edge if no node hovered
+    hoveredEdge = null;
+    if (!hoveredNode) {
+      for (const e of edges) {
+        const d = distToSegment(pos, e.sourceNode, e.targetNode);
+        if (d < 10) {
+          hoveredEdge = e;
+          break;
+        }
+      }
+    }
+
+    if (hoveredNode) {
+      canvas.style.cursor = 'pointer';
+      tooltip.style.display = 'block';
+      tooltip.style.left = `${evt.offsetX + 15}px`;
+      tooltip.style.top = `${evt.offsetY + 15}px`;
+      tooltip.innerHTML = `
+        <strong>${escapeHtml(hoveredNode.name)}</strong> ${hoveredNode.nick ? `(${escapeHtml(hoveredNode.nick)})` : ''}<br>
+        📸 ${hoveredNode.photo_count || 0} รูปภาพ · 🎞️ ${hoveredNode.event_count || 0} เหตุการณ์<br>
+        <span style="font-size:0.75rem;color:var(--accent);">คลิกเพื่อเปิดโปรไฟล์</span>
+      `;
+    } else if (hoveredEdge) {
+      canvas.style.cursor = 'default';
+      tooltip.style.display = 'block';
+      tooltip.style.left = `${evt.offsetX + 15}px`;
+      tooltip.style.top = `${evt.offsetY + 15}px`;
+      const evList = (hoveredEdge.shared_events || [])
+        .map((ev) => `• ${escapeHtml(ev.name)}`)
+        .slice(0, 3)
+        .join('<br>');
+      tooltip.innerHTML = `
+        <strong>${escapeHtml(hoveredEdge.sourceNode.name)} & ${escapeHtml(hoveredEdge.targetNode.name)}</strong><br>
+        ร่วมกัน: <strong>${hoveredEdge.weight}</strong> เหตุการณ์ (${hoveredEdge.shared_photos_count} รูป)<br>
+        ${evList ? `<div style="font-size:0.74rem;color:#AAA;margin-top:4px;">${evList}</div>` : ''}
+      `;
+    } else {
+      canvas.style.cursor = 'default';
+      tooltip.style.display = 'none';
+    }
+  };
+
+  canvas.onmouseup = () => {
+    draggedNode = null;
+  };
+
+  canvas.onclick = (evt) => {
+    const pos = getCanvasPos(evt);
+    for (const n of nodes) {
+      const dx = pos.x - n.x;
+      const dy = pos.y - n.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= n.radius) {
+        openFriendDetail(n.id);
+        break;
+      }
+    }
+  };
+}
+
+function distToSegment(p, v, w) {
+  const l2 = (v.x - w.x) * (v.x - w.x) + (v.y - w.y) * (v.y - w.y);
+  if (l2 === 0) return Math.sqrt((p.x - v.x) * (p.x - v.x) + (p.y - v.y) * (p.y - v.y));
+  let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const projX = v.x + t * (w.x - v.x);
+  const projY = v.y + t * (w.y - v.y);
+  return Math.sqrt((p.x - projX) * (p.x - projX) + (p.y - projY) * (p.y - projY));
+}
+
 async function openFriendDetail(personId) {
   try {
     const person = await api(`/persons/${personId}`);
@@ -1076,6 +1387,11 @@ async function loadMap(fit = false) {
   initMap();
   if (!mapInstance) return;
 
+  if (currentMapMode === 'heatmap') {
+    renderMapHeatmap(fit);
+    return;
+  }
+
   const cat = document.getElementById('map-filter-cat')?.value || '';
   const person = document.getElementById('map-filter-friend')?.value || '';
   const params = new URLSearchParams();
@@ -1095,6 +1411,98 @@ async function loadMap(fit = false) {
   } catch {
     showToast('ไม่สามารถดึงข้อมูลพิกัดภาพถ่ายได้', 'error');
   }
+}
+
+async function renderMapHeatmap(fit = false) {
+  if (!mapInstance || !mapMarkersLayer) return;
+  mapMarkersLayer.clearLayers();
+
+  const cat = document.getElementById('map-filter-cat')?.value || '';
+  const params = new URLSearchParams();
+  if (cat) params.set('cat', cat);
+
+  try {
+    const data = await api('/map?' + params.toString());
+
+    const statsEl = document.getElementById('map-stats-count');
+    if (statsEl) {
+      statsEl.textContent = `${data.summary.total_gps_photos} รูป · ${data.heatmap.length} จุดความถี่`;
+    }
+
+    data.heatmap.forEach((h) => {
+      // Color gradient from warm amber to fiery red-orange
+      const color = h.intensity > 0.7 ? '#EF4444' : h.intensity > 0.4 ? '#F97316' : '#F0A63C';
+      const radiusMeters = Math.max(160, 120 + h.count * 25);
+
+      const circle = L.circle([h.lat, h.lon], {
+        radius: radiusMeters,
+        fillColor: color,
+        fillOpacity: 0.35 + h.intensity * 0.45,
+        color: color,
+        weight: 1.5,
+      });
+
+      const popupHtml = `
+        <div class="map-popup-card">
+          <div class="map-popup-title" style="color:${color};">🔥 จุดความถี่สูง (${h.count} รูป)</div>
+          <div class="map-popup-meta">
+            <div>📍 พิกัด: ${formatGps(h.lat, h.lon)}</div>
+            <div>⚡ ความหนาแน่น: ${Math.round(h.intensity * 100)}%</div>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="findNearbyPhotos(${h.lat}, ${h.lon})" style="width:100%;margin-top:6px;">📍 ดูรูปใกล้เคียง</button>
+        </div>
+      `;
+      circle.bindPopup(popupHtml);
+      mapMarkersLayer.addLayer(circle);
+    });
+
+    renderTopPlacesList(data.most_visited || []);
+
+    if (fit && data.summary.bounds) {
+      mapInstance.fitBounds(
+        [
+          [data.summary.bounds.min_lat, data.summary.bounds.min_lon],
+          [data.summary.bounds.max_lat, data.summary.bounds.max_lon],
+        ],
+        { padding: [40, 40] }
+      );
+    }
+  } catch (err) {
+    console.error('Failed to load heatmap:', err);
+    showToast('ไม่สามารถดึงข้อมูลแผนที่ความถี่ได้', 'error');
+  }
+}
+
+function renderTopPlacesList(places) {
+  const container = document.getElementById('map-top-places-list');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!places || places.length === 0) {
+    container.innerHTML =
+      '<p class="muted" style="font-size:0.8rem;text-align:center;padding:1rem;">ยังไม่มีข้อมูลสถานที่ยอดฮิต</p>';
+    return;
+  }
+
+  places.forEach((p, idx) => {
+    const item = document.createElement('div');
+    item.className = 'map-top-place-item';
+    item.innerHTML = `
+      <div class="map-top-place-rank">#${idx + 1}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="map-top-place-title">${escapeHtml(p.name)}</div>
+        <div class="map-top-place-sub">${p.event_count || 1} เหตุการณ์</div>
+      </div>
+      <div class="map-top-place-count">${p.photo_count} รูป</div>
+    `;
+    item.addEventListener('click', () => {
+      if (mapInstance) {
+        mapInstance.flyTo([p.lat, p.lon], 15, { duration: 1 });
+        findNearbyPhotos(p.lat, p.lon);
+      }
+    });
+    container.appendChild(item);
+  });
 }
 
 function renderMapMarkers(fit = false) {
@@ -2505,6 +2913,31 @@ async function init() {
   // Add friend button
   document.getElementById('btn-add-friend')?.addEventListener('click', openAddFriendModal);
 
+  // Social Graph toggle button (FR-1403)
+  document.getElementById('btn-toggle-social-graph')?.addEventListener('click', () => {
+    const container = document.getElementById('social-graph-container');
+    if (!container) return;
+    const isVisible = container.style.display !== 'none';
+    if (isVisible) {
+      container.style.display = 'none';
+      if (socialGraphAnimId) {
+        cancelAnimationFrame(socialGraphAnimId);
+        socialGraphAnimId = null;
+      }
+    } else {
+      loadSocialGraph();
+    }
+  });
+
+  document.getElementById('btn-close-social-graph')?.addEventListener('click', () => {
+    const container = document.getElementById('social-graph-container');
+    if (container) container.style.display = 'none';
+    if (socialGraphAnimId) {
+      cancelAnimationFrame(socialGraphAnimId);
+      socialGraphAnimId = null;
+    }
+  });
+
   // Scan faces button (Phase 3)
   document.getElementById('btn-scan-faces')?.addEventListener('click', async () => {
     try {
@@ -2643,18 +3076,40 @@ async function init() {
     }
   });
 
-  // Map toolbar controls (Phase 1E)
+  // Map toolbar controls (Phase 1E & Phase 5 FR-1406)
   document.getElementById('btn-map-mode-photos')?.addEventListener('click', () => {
     currentMapMode = 'photos';
     document.getElementById('btn-map-mode-photos')?.classList.add('active');
     document.getElementById('btn-map-mode-events')?.classList.remove('active');
+    document.getElementById('btn-map-mode-heatmap')?.classList.remove('active');
     renderMapMarkers();
   });
   document.getElementById('btn-map-mode-events')?.addEventListener('click', () => {
     currentMapMode = 'events';
     document.getElementById('btn-map-mode-events')?.classList.add('active');
     document.getElementById('btn-map-mode-photos')?.classList.remove('active');
+    document.getElementById('btn-map-mode-heatmap')?.classList.remove('active');
     renderMapMarkers();
+  });
+  document.getElementById('btn-map-mode-heatmap')?.addEventListener('click', () => {
+    currentMapMode = 'heatmap';
+    document.getElementById('btn-map-mode-heatmap')?.classList.add('active');
+    document.getElementById('btn-map-mode-photos')?.classList.remove('active');
+    document.getElementById('btn-map-mode-events')?.classList.remove('active');
+    renderMapHeatmap(false);
+  });
+  document.getElementById('btn-toggle-map-places')?.addEventListener('click', () => {
+    const panel = document.getElementById('map-places-panel');
+    if (!panel) return;
+    const isVisible = panel.style.display !== 'none';
+    panel.style.display = isVisible ? 'none' : 'flex';
+    if (!isVisible) {
+      api('/map').then((data) => renderTopPlacesList(data.most_visited || []));
+    }
+  });
+  document.getElementById('btn-close-map-places')?.addEventListener('click', () => {
+    const panel = document.getElementById('map-places-panel');
+    if (panel) panel.style.display = 'none';
   });
   document.getElementById('map-filter-cat')?.addEventListener('change', () => loadMap());
   document.getElementById('map-filter-friend')?.addEventListener('change', () => loadMap());

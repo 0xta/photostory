@@ -249,11 +249,31 @@
     <section id="view-friends" class="view">
       <div class="section-header">
         <h2 class="view-title">เพื่อนและความสัมพันธ์</h2>
-        <div style="display: flex; gap: 0.5rem;">
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-sm" id="btn-toggle-social-graph">🕸️ แผนผังเครือข่าย (Social Graph)</button>
           <button class="btn btn-sm" id="btn-scan-faces">🔍 ตรวจจับใบหน้า</button>
           <button class="btn btn-primary btn-sm" id="btn-add-friend">+ เพิ่มเพื่อนใหม่</button>
         </div>
       </div>
+
+      <!-- Social Graph Container (FR-1403) -->
+      <div id="social-graph-container" class="card" style="display: none; margin-bottom: 1.5rem; padding: 1.2rem; position: relative;">
+        <div class="card-title-row" style="margin-bottom: 0.8rem;">
+          <div>
+            <h3 class="card-title">🕸️ แผนผังเครือข่ายมิตรภาพ (Social Graph)</h3>
+            <span class="muted" style="font-size: 0.8rem;">กลุ่มเพื่อนที่บันทึกร่วมกันในเหตุการณ์ต่างๆ (เส้นหนา = เจอกันบ่อย)</span>
+          </div>
+          <button class="btn btn-sm" id="btn-close-social-graph">✕ ปิดแผนผัง</button>
+        </div>
+        <div style="position: relative; width: 100%; height: 420px; background: #0E1117; border-radius: 8px; overflow: hidden; border: 1px solid var(--line);">
+          <canvas id="social-graph-canvas" width="900" height="420" style="width: 100%; height: 100%; display: block;"></canvas>
+          <div id="social-graph-tooltip" style="display: none; position: absolute; pointer-events: none; background: rgba(18,21,28,0.95); border: 1px solid var(--accent); padding: 8px 12px; border-radius: 6px; font-size: 0.82rem; color: #FFF; box-shadow: 0 4px 14px rgba(0,0,0,0.6); z-index: 10; max-width: 280px;"></div>
+        </div>
+        <div class="muted" style="font-size: 0.75rem; margin-top: 0.5rem; text-align: right;">
+          💡 ลากวงกลมเพื่อนเพื่อจัดวางตำแหน่ง หรือคลิกที่ชื่อเพื่อนเพื่อเปิดดูโปรไฟล์
+        </div>
+      </div>
+
       <div class="friends-grid" id="friends-list"></div>
     </section>
 
@@ -264,6 +284,7 @@
           <div class="map-mode-toggle">
             <button class="btn btn-sm active" id="btn-map-mode-photos" title="แสดงภาพถ่ายแต่ละใบ">📍 รูปภาพ</button>
             <button class="btn btn-sm" id="btn-map-mode-events" title="แสดงกลุ่มเหตุการณ์">🎞️ เหตุการณ์</button>
+            <button class="btn btn-sm" id="btn-map-mode-heatmap" title="แสดงแผนที่ความถี่การเดินทาง">🔥 ความถี่ (Heatmap)</button>
           </div>
 
           <div class="filter-item">
@@ -298,7 +319,8 @@
             </select>
           </div>
 
-          <div style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+          <div style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-sm" id="btn-toggle-map-places" title="ดูสถานที่ที่ไปบ่อยที่สุด">🏆 สถานที่ยอดฮิต</button>
             <span class="muted mono" id="map-stats-count" style="font-size: 0.82rem;">0 จุดพิกัด</span>
             <button class="btn btn-sm" id="btn-map-fit-bounds" title="ซูมให้เห็นทุกจุด">🔍 ซูมรวม</button>
           </div>
@@ -312,6 +334,18 @@
         <div id="map-container" class="map-box">
           <!-- Leaflet Map rendered here -->
         </div>
+
+        <!-- Top Places / Most Visited sidebar panel (FR-1406) -->
+        <aside id="map-places-panel" class="nearby-panel card" style="display: none;">
+          <div class="nearby-header">
+            <div class="nearby-title-row">
+              <h4 class="nearby-title">🏆 สถานที่ที่ไปบ่อยที่สุด</h4>
+              <button class="btn-close" id="btn-close-map-places" title="ปิด">&times;</button>
+            </div>
+            <span class="muted" style="font-size: 0.75rem;">จัดอันดับตามจำนวนรูปภาพและเหตุการณ์</span>
+          </div>
+          <div class="nearby-photos-list" id="map-top-places-list" style="padding: 0.6rem; display: flex; flex-direction: column; gap: 8px;"></div>
+        </aside>
 
         <!-- Nearby photos sidebar panel -->
         <aside id="map-nearby-panel" class="nearby-panel card" style="display: none;">
