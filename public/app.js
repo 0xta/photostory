@@ -2712,7 +2712,7 @@ async function loadRecap(year, month, forceFresh = false) {
               .map(
                 (h) => `
                 <div class="recap-highlight-card" onclick="openPhotoModal('${h.id}')">
-                  <img class="recap-highlight-thumb" src="/api/photos/${h.id}/thumb" alt="${escapeHtml(h.filename)}" loading="lazy" />
+                  <img class="recap-highlight-thumb" src="/api/thumbs/${h.id}" alt="${escapeHtml(h.filename)}" loading="lazy" />
                   <div class="recap-highlight-note">${escapeHtml(h.note || h.filename)}</div>
                 </div>
               `

@@ -469,6 +469,17 @@ export const photosRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // GET /api/photos/:id/thumb — route alias for /api/thumbs/:id
+  app.get<{ Params: { id: string } }>('/api/photos/:id/thumb', async (req, reply) => {
+    const thumbFile = path.join(THUMBS_DIR, `${req.params.id}.jpg`);
+    if (!fs.existsSync(thumbFile)) {
+      return reply.status(404).send({ error: 'Thumbnail not found' });
+    }
+    const stream = fs.createReadStream(thumbFile);
+    reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+    return reply.type('image/jpeg').send(stream);
+  });
+
   // PATCH /api/photos/:id (note, taken_at, lat, lon)
   app.patch<{
     Params: { id: string };

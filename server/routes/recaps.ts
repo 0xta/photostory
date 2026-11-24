@@ -106,7 +106,7 @@ function renderHtmlRecap(content: RecapContent): string {
     .map(
       (h) => `
       <div class="highlight-item">
-        <img src="/api/photos/${h.id}/thumb" alt="${escapeXml(h.filename)}" loading="lazy" />
+        <img src="/api/thumbs/${h.id}" alt="${escapeXml(h.filename)}" loading="lazy" />
         <div class="highlight-note">${escapeXml(h.note || h.filename)}</div>
       </div>
     `
