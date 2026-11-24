@@ -23,11 +23,23 @@ export const importRoutes: FastifyPluginAsync = async (app) => {
     let filePaths: string[] = [];
 
     if (folder) {
-      const resolved = path.resolve(folder);
-      if (!fs.existsSync(resolved)) {
+      const folderList = String(folder)
+        .split(/[,;\n\r]+/)
+        .map((f) => f.trim())
+        .filter(Boolean);
+
+      let foundAnyFolder = false;
+      for (const fld of folderList) {
+        const resolved = path.resolve(fld);
+        if (fs.existsSync(resolved)) {
+          foundAnyFolder = true;
+          filePaths.push(...scanDirectory(resolved));
+        }
+      }
+
+      if (!foundAnyFolder) {
         return reply.status(400).send({ error: `Folder not found: ${folder}` });
       }
-      filePaths = scanDirectory(resolved);
     } else if (Array.isArray(files) && files.length > 0) {
       filePaths = files.map((f) => path.resolve(f)).filter((f) => fs.existsSync(f));
     } else {
