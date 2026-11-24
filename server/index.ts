@@ -22,6 +22,7 @@ import { mealsRoutes } from './routes/meals.js';
 import { recapsRoutes } from './routes/recaps.js';
 import { embedRoutes } from './routes/embed.js';
 import { facesRoutes } from './routes/faces.js';
+import { insightsRoutes } from './routes/insights.js';
 import { startEmbedJob } from './workers/embed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,6 +47,7 @@ app.register(mealsRoutes);
 app.register(recapsRoutes);
 app.register(embedRoutes);
 app.register(facesRoutes);
+app.register(insightsRoutes);
 
 // ── Serve static frontend ───────────────────────────────────────
 app.register(fastifyStatic, {

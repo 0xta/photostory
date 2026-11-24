@@ -392,14 +392,36 @@ export function clusterFaces(threshold?: number): {
     }
   }
 
-  // Persist updated cluster_id for each face
-  const updateStmt = db.prepare('UPDATE faces SET cluster_id = ? WHERE id = ?');
+  // Persist updated cluster_id and propagate person_id for each face
+  const updateStmt = db.prepare('UPDATE faces SET cluster_id = ?, person_id = ? WHERE id = ?');
+  const insertPpStmt = db.prepare(`
+    INSERT OR REPLACE INTO photo_persons (photo_id, person_id, source)
+    VALUES (?, ?, 'face-confirmed')
+  `);
+
   const updateTx = db.transaction(() => {
     let count = 0;
+    const clusterById = new Map<string, (typeof clusters)[0]>();
+    for (const c of clusters) {
+      clusterById.set(c.id, c);
+    }
+
     for (const [faceId, info] of faceMap.entries()) {
-      updateStmt.run(info.cluster_id, faceId);
+      const c = clusterById.get(info.cluster_id);
+      const personId = c?.person_id || null;
+      updateStmt.run(info.cluster_id, personId, faceId);
       count++;
     }
+
+    // Auto-link photos of identified clusters to photo_persons
+    for (const c of clusters) {
+      if (c.person_id) {
+        for (const pid of c.photo_ids) {
+          insertPpStmt.run(pid, c.person_id);
+        }
+      }
+    }
+
     return count;
   });
 

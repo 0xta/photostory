@@ -80,6 +80,15 @@
           </div>
         </div>
 
+        <!-- On This Day (FR-1405 / AC-34) -->
+        <div id="dashboard-on-this-day-card" class="dash-card on-this-day-card" style="display: none; margin-bottom: 1rem;">
+          <div class="card-title-row">
+            <h3 class="card-title">🕰️ วันนี้ในอดีต (On This Day)</h3>
+            <span class="muted" id="on-this-day-subtitle" style="font-size: 0.78rem;"></span>
+          </div>
+          <div class="on-this-day-content" id="on-this-day-content"></div>
+        </div>
+
         <!-- 2-column Dashboard Row -->
         <div class="dashboard-row">
           <!-- Monthly Histogram (FR-702) -->
@@ -143,6 +152,15 @@
             </div>
             <div class="events-grid" id="dashboard-events"></div>
           </div>
+        </div>
+
+        <!-- Relationship Insights (FR-1401 / AC-32) -->
+        <div id="dashboard-insights-card" class="dash-card" style="display: none; margin-top: 1rem;">
+          <div class="card-title-row">
+            <h3 class="card-title">🤝 ไฮไลต์มิตรภาพ (Relationship Insights)</h3>
+            <span class="muted" style="font-size: 0.78rem;">เพื่อนที่ควรทักทาย & ครบรอบ</span>
+          </div>
+          <div class="insights-summary-list" id="dashboard-insights-list"></div>
         </div>
       </div>
     </section>
@@ -690,7 +708,10 @@
       </div>
       <div class="modal-footer flex-between">
         <button class="btn btn-danger btn-sm" id="btn-delete-friend">ลบเพื่อนคนนี้</button>
-        <button class="btn" id="btn-close-friend-footer">ปิด</button>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn btn-primary btn-sm" id="btn-friend-shared-album">📖 อัลบั้มความทรงจำ (X & ME)</button>
+          <button class="btn" id="btn-close-friend-footer">ปิด</button>
+        </div>
       </div>
     </div>
   </div>

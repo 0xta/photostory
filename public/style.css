@@ -1934,6 +1934,103 @@ body {
   color: var(--accent);
 }
 
+/* ── Phase 5: On This Day & Relationship Insights ──────────── */
+.on-this-day-card {
+  background: linear-gradient(135deg, rgba(240, 166, 60, 0.08), var(--panel));
+  border: 1px solid rgba(240, 166, 60, 0.25);
+  border-left: 4px solid var(--accent);
+}
+.on-this-day-group {
+  margin-bottom: 1rem;
+}
+.on-this-day-group:last-child {
+  margin-bottom: 0;
+}
+.on-this-day-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0.6rem;
+}
+.on-this-day-year-badge {
+  background: var(--accent);
+  color: #12151B;
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.on-this-day-event-name {
+  font-size: 0.85rem;
+  color: var(--ink);
+  font-weight: 500;
+}
+.on-this-day-thumbs-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.on-this-day-thumb {
+  position: relative;
+  width: 110px;
+  height: 85px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  background: #000;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.on-this-day-thumb:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+.on-this-day-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.insights-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.insight-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  font-size: 0.85rem;
+}
+.insight-item-lapsed {
+  border-left: 3px solid #F43F5E;
+}
+.insight-item-anniversary {
+  border-left: 3px solid #10B981;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.08), var(--panel2));
+}
+.insight-badge {
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.insight-badge-lapsed {
+  background: rgba(244, 63, 94, 0.15);
+  color: #FB7185;
+}
+.insight-badge-anniversary {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34D399;
+}
+
 /* ── Responsive Mobile ────────────────────────────────────── */
 @media (max-width: 390px) {
   .app-header { padding: 0.5rem 0.6rem; flex-wrap: wrap; }

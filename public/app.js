@@ -357,6 +357,103 @@ async function loadDashboard() {
     data.recent_events.forEach((ev) => {
       recentEventsEl.appendChild(createEventCard(ev));
     });
+
+    // 6. On This Day (FR-1405 / AC-34)
+    try {
+      const otdData = await api('/on-this-day');
+      const otdCard = document.getElementById('dashboard-on-this-day-card');
+      const otdContent = document.getElementById('on-this-day-content');
+      const otdSub = document.getElementById('on-this-day-subtitle');
+
+      if (otdData && otdData.groups && otdData.groups.length > 0) {
+        otdCard.style.display = 'block';
+        otdSub.textContent = `${otdData.total_photos} รูปในวันนี้จากปีก่อนหน้า`;
+        otdContent.innerHTML = '';
+
+        otdData.groups.forEach((g) => {
+          const grpEl = document.createElement('div');
+          grpEl.className = 'on-this-day-group';
+          const evNames = g.events.map((e) => e.name).filter(Boolean).join(', ');
+          grpEl.innerHTML = `
+            <div class="on-this-day-header">
+              <span class="on-this-day-year-badge">${g.years_ago} ปีก่อน (${g.year + 543})</span>
+              <span class="on-this-day-event-name">${escapeHtml(evNames || 'ความทรงจำในวันนี้')}</span>
+            </div>
+            <div class="on-this-day-thumbs-strip">
+              ${g.photos
+                .map(
+                  (p) => `
+                <div class="on-this-day-thumb" onclick="openPhotoModal('${p.id}')" title="${escapeHtml(p.filename)}">
+                  <img src="/api/thumbs/${p.id}" alt="${escapeHtml(p.filename)}" loading="lazy" />
+                </div>
+              `
+                )
+                .join('')}
+            </div>
+          `;
+          otdContent.appendChild(grpEl);
+        });
+      } else {
+        otdCard.style.display = 'none';
+      }
+    } catch (otdErr) {
+      console.warn('Failed to load on-this-day:', otdErr);
+    }
+
+    // 7. Relationship Insights (FR-1401 / AC-32)
+    try {
+      const relData = await api('/insights/relationships');
+      const relCard = document.getElementById('dashboard-insights-card');
+      const relList = document.getElementById('dashboard-insights-list');
+
+      const hasLapsed = relData && relData.lapsed && relData.lapsed.length > 0;
+      const hasAnniv = relData && relData.anniversaries && relData.anniversaries.length > 0;
+
+      if (hasLapsed || hasAnniv) {
+        relCard.style.display = 'block';
+        relList.innerHTML = '';
+
+        if (hasAnniv) {
+          relData.anniversaries.forEach((a) => {
+            const item = document.createElement('div');
+            item.className = 'insight-item insight-item-anniversary';
+            item.innerHTML = `
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>🎉</span>
+                <div>
+                  <strong>${escapeHtml(a.name)}</strong>
+                  <span class="muted" style="font-size: 0.78rem; margin-left: 6px;">ครบรอบมิตรภาพ ${a.years} ปี (รู้จักกันเมื่อ ${formatThaiDateShort(a.first_met)})</span>
+                </div>
+              </div>
+              <button class="btn btn-sm" onclick="openFriendDetail('${a.id}')">ดูความทรงจำ →</button>
+            `;
+            relList.appendChild(item);
+          });
+        }
+
+        if (hasLapsed) {
+          relData.lapsed.slice(0, 3).forEach((l) => {
+            const item = document.createElement('div');
+            item.className = 'insight-item insight-item-lapsed';
+            item.innerHTML = `
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>⏳</span>
+                <div>
+                  <strong>${escapeHtml(l.name)}</strong>
+                  <span class="muted" style="font-size: 0.78rem; margin-left: 6px;">ไม่ได้เจอกันมา ${l.months_unseen} เดือนแล้ว (เจอล่าสุด ${formatThaiDateShort(l.last_met)})</span>
+                </div>
+              </div>
+              <button class="btn btn-sm" onclick="openFriendDetail('${l.id}')">ทักทายเพื่อน →</button>
+            `;
+            relList.appendChild(item);
+          });
+        }
+      } else {
+        relCard.style.display = 'none';
+      }
+    } catch (relErr) {
+      console.warn('Failed to load relationship insights:', relErr);
+    }
   } catch (err) {
     console.error('Failed to load dashboard:', err);
   }
@@ -2397,6 +2494,12 @@ async function init() {
       loadFriends();
       updateStatus();
     }
+  });
+
+  // Shared Album "X & ME" (FR-1402)
+  document.getElementById('btn-friend-shared-album')?.addEventListener('click', () => {
+    if (!currentFriendDetail) return;
+    window.open(`/api/persons/${currentFriendDetail.id}/album/export?format=html`, '_blank');
   });
 
   // Add friend button
