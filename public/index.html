@@ -21,6 +21,7 @@
     </div>
     <div class="header-right">
       <button id="btn-toggle-ml" class="btn btn-sm" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;" title="สลับการค้นหาด้วยความหมาย (ML Semantic Search)">🧠 ค้นหาด้วยความหมาย: <span id="label-ml-status">เปิด</span></button>
+      <button id="btn-open-manage-data" class="btn btn-sm" title="จัดการข้อมูล การส่งออก และสำรอง">💾 จัดการข้อมูล</button>
       <button class="btn btn-primary btn-sm btn-open-import">+ นำเข้ารูป</button>
       <div class="theme-switcher">
         <button class="theme-btn" data-theme="light" title="สว่าง">☀️</button>
@@ -1153,6 +1154,82 @@
       <div class="modal-footer flex-between">
         <span class="muted" style="font-size: 0.8rem;">💡 การยอมรับจะผูกรูปทั้งหมดของบุคคลนี้เข้ากับเพื่อนโดยอัตโนมัติ</span>
         <button class="btn" id="btn-close-face-cluster-footer">ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Manage Data, Open Export & Watch Folder (Phase 5 FR-1410 & FR-1411) ── -->
+  <div id="modal-manage-data" class="modal-backdrop" style="display: none;">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <h3 class="modal-title">💾 จัดการข้อมูล การส่งออก และโฟลเดอร์อัตโนมัติ</h3>
+        <button class="btn-close" id="btn-close-manage-data">&times;</button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.25rem;">
+        
+        <!-- Section 1: Open Export -->
+        <div class="manage-section">
+          <h4 style="margin: 0 0 0.35rem 0; font-size: 1rem;">📦 ส่งออกข้อมูลแบบเปิด (Open-Format Export)</h4>
+          <p class="muted" style="font-size: 0.85rem; margin-bottom: 0.75rem;">
+            ส่งออกข้อมูลความทรงจำทั้งหมดของคุณเป็นไฟล์มาตรฐานสากล ไม่มี Vendor Lock-in นำไปใช้งานต่อในโปรแกรมอื่นได้ทันที
+          </p>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-sm" id="btn-export-json">💾 ส่งออก JSON</button>
+            <button class="btn btn-sm" id="btn-export-csv">📊 ส่งออก CSV</button>
+            <button class="btn btn-sm" id="btn-export-geojson">🗺️ ส่งออก GeoJSON</button>
+            <button class="btn btn-sm btn-primary" id="btn-export-xmp">🏷️ เขียน XMP Sidecar</button>
+          </div>
+          <div id="xmp-export-status" class="muted" style="font-size: 0.8rem; margin-top: 0.4rem; display: none;"></div>
+          <p class="muted" style="font-size: 0.78rem; margin-top: 0.4rem;">
+            💡 XMP Sidecar จะเขียนไฟล์ <code>.xmp</code> ไว้เคียงข้างรูปถ่ายต้นฉบับ โดยไม่ดัดแปลงหรือแก้ไขข้อมูลในไฟล์ภาพเดิมแม้แต่น้อย
+          </p>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--border-color); margin: 0;" />
+
+        <!-- Section 2: Watch Folder -->
+        <div class="manage-section">
+          <div class="flex-between" style="align-items: center; margin-bottom: 0.35rem;">
+            <h4 style="margin: 0; font-size: 1rem;">👀 โฟลเดอร์เฝ้าดูอัตโนมัติ (Watch Folder Auto-Ingest)</h4>
+            <span id="badge-watch-status" class="badge" style="background: var(--bg-hover); font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px;">ปิดอยู่</span>
+          </div>
+          <p class="muted" style="font-size: 0.85rem; margin-bottom: 0.75rem;">
+            ตรวจจับรูปใหม่ที่ถูกบันทึกลงในโฟลเดอร์อัตโนมัติ (เช่น จาก Syncthing หรือการโยนรูป) แล้ว Ingest + จัดกลุ่มทันที
+          </p>
+          <div class="form-group" style="margin-bottom: 0.5rem;">
+            <label class="form-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="check-watch-enabled" />
+              <span>เปิดระบบเฝ้าดูโฟลเดอร์อัตโนมัติ</span>
+            </label>
+          </div>
+          <div class="form-group" style="margin-bottom: 0.75rem;">
+            <label for="input-watch-folder-path" class="form-label">ที่อยู่โฟลเดอร์ที่ต้องการเฝ้าดู (Folder Path)</label>
+            <input type="text" id="input-watch-folder-path" class="input mono input-sm" value="photo" placeholder="เช่น photo หรือ D:\photos" />
+          </div>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-sm btn-primary" id="btn-save-watch-settings">บันทึกการตั้งค่า</button>
+            <button class="btn btn-sm" id="btn-trigger-watch-scan">⚡ สแกนหารูปใหม่ทันที</button>
+          </div>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--border-color); margin: 0;" />
+
+        <!-- Section 3: Backup & Restore -->
+        <div class="manage-section">
+          <h4 style="margin: 0 0 0.35rem 0; font-size: 1rem;">📥 สำรองและกู้คืนฐานข้อมูล (Database Backup & Restore)</h4>
+          <p class="muted" style="font-size: 0.85rem; margin-bottom: 0.75rem;">
+            สำรอง Metadata, การแท็ก, เหตุการณ์ และใบหน้าทั้งหมดเป็นไฟล์ JSON กู้คืนได้ทุกเวลา
+          </p>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-sm" id="btn-backup-db-json">📥 สำรองข้อมูล (Backup JSON)</button>
+            <button class="btn btn-sm" id="btn-restore-db-json-trigger">📤 กู้คืนข้อมูล (Restore JSON)</button>
+            <input type="file" id="file-restore-db-input" accept=".json" style="display: none;" />
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-close-manage-data-footer">ปิด</button>
       </div>
     </div>
   </div>

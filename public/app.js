@@ -3063,6 +3063,134 @@ async function init() {
     startImport(val);
   });
 
+  // ── Data Management, Open Export & Watch Folder (Phase 5 FR-1410 & FR-1411) ──
+  async function refreshWatchStatus() {
+    try {
+      const res = await api('/watch');
+      const checkEl = document.getElementById('check-watch-enabled');
+      const folderEl = document.getElementById('input-watch-folder-path');
+      const badgeEl = document.getElementById('badge-watch-status');
+      if (checkEl) checkEl.checked = !!res.enabled;
+      if (folderEl && res.folder) folderEl.value = res.folder;
+      if (badgeEl) {
+        if (res.status === 'watching') {
+          badgeEl.textContent = '🟢 กำลังเฝ้าดู';
+          badgeEl.style.background = 'rgba(74, 222, 128, 0.2)';
+          badgeEl.style.color = '#4ade80';
+        } else {
+          badgeEl.textContent = '⚪ ปิดอยู่';
+          badgeEl.style.background = 'var(--bg-hover)';
+          badgeEl.style.color = 'var(--text-muted)';
+        }
+      }
+    } catch {}
+  }
+
+  document.getElementById('btn-open-manage-data')?.addEventListener('click', () => {
+    document.getElementById('modal-manage-data').style.display = 'flex';
+    refreshWatchStatus();
+  });
+
+  const closeManageDataModal = () => {
+    const modal = document.getElementById('modal-manage-data');
+    if (modal) modal.style.display = 'none';
+  };
+  document.getElementById('btn-close-manage-data')?.addEventListener('click', closeManageDataModal);
+  document.getElementById('btn-close-manage-data-footer')?.addEventListener('click', closeManageDataModal);
+
+  // Open-Format Exports (FR-1410)
+  document.getElementById('btn-export-json')?.addEventListener('click', () => {
+    window.open('/api/export?format=json', '_blank');
+  });
+  document.getElementById('btn-export-csv')?.addEventListener('click', () => {
+    window.open('/api/export?format=csv', '_blank');
+  });
+  document.getElementById('btn-export-geojson')?.addEventListener('click', () => {
+    window.open('/api/export?format=geojson', '_blank');
+  });
+  document.getElementById('btn-export-xmp')?.addEventListener('click', async () => {
+    try {
+      const statusEl = document.getElementById('xmp-export-status');
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'กำลังเขียนไฟล์ XMP Sidecar...';
+      }
+      const res = await api('/export/xmp', { method: 'POST' });
+      showToast(res.message, 'success');
+      if (statusEl) {
+        statusEl.textContent = `✓ ${res.message}`;
+      }
+    } catch {
+      showToast('ไม่สามารถเขียนไฟล์ XMP ได้', 'error');
+    }
+  });
+
+  // Watch Folder controls (FR-1411)
+  document.getElementById('btn-save-watch-settings')?.addEventListener('click', async () => {
+    const enabled = document.getElementById('check-watch-enabled')?.checked || false;
+    const folder = document.getElementById('input-watch-folder-path')?.value.trim() || 'photo';
+    try {
+      await api('/watch', {
+        method: 'POST',
+        body: JSON.stringify({ enabled, folder }),
+      });
+      refreshWatchStatus();
+      showToast(enabled ? `เปิดเฝ้าดูโฟลเดอร์ "${folder}" เรียบร้อย` : 'ปิดการเฝ้าดูโฟลเดอร์เรียบร้อย', 'success');
+    } catch (err) {
+      showToast(err.message || 'ไม่สามารถบันทึกการตั้งค่าโฟลเดอร์ได้', 'error');
+    }
+  });
+
+  document.getElementById('btn-trigger-watch-scan')?.addEventListener('click', async () => {
+    try {
+      showToast('กำลังตรวจสอบรูปภาพใหม่...', 'info');
+      const res = await api('/watch/scan', { method: 'POST' });
+      if (res.new_photos_found > 0) {
+        showToast(`พบรูปภาพใหม่ ${res.new_photos_found} รูป กำลังนำเข้าสู่ระบบ...`, 'success');
+        updateStatus();
+      } else {
+        showToast('ไม่พบรูปภาพใหม่เพิ่มเติมในโฟลเดอร์', 'info');
+      }
+      refreshWatchStatus();
+    } catch {
+      showToast('ไม่สามารถสแกนโฟลเดอร์ได้', 'error');
+    }
+  });
+
+  // Database Backup & Restore (FR-801, FR-802)
+  document.getElementById('btn-backup-db-json')?.addEventListener('click', () => {
+    window.open('/api/backup', '_blank');
+  });
+
+  document.getElementById('btn-restore-db-json-trigger')?.addEventListener('click', () => {
+    document.getElementById('file-restore-db-input')?.click();
+  });
+
+  document.getElementById('file-restore-db-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const backupData = JSON.parse(text);
+      showToast('กำลังกู้คืนข้อมูล...', 'info');
+      const res = await api('/restore', {
+        method: 'POST',
+        body: JSON.stringify(backupData),
+      });
+      showToast(`กู้คืนเรียบร้อย: ${res.matched_photos} รูป, ${res.events_restored} เหตุการณ์, ${res.persons_restored} เพื่อน`, 'success');
+      loadDashboard();
+      loadEvents();
+      loadPhotos();
+      loadFriends();
+      updateStatus();
+      closeManageDataModal();
+    } catch {
+      showToast('ไฟล์สำรองไม่ถูกต้องหรือไม่สามารถกู้คืนได้', 'error');
+    } finally {
+      e.target.value = '';
+    }
+  });
+
   // Recluster button
   document.getElementById('btn-recluster')?.addEventListener('click', async () => {
     try {

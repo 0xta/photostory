@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Import DB to ensure schema is initialized on startup
-import db from './db.js';
+import db, { getSetting } from './db.js';
 import { jobsRoutes } from './routes/jobs.js';
 import { importRoutes } from './routes/import.js';
 import { eventsRoutes } from './routes/events.js';
@@ -23,7 +23,10 @@ import { recapsRoutes } from './routes/recaps.js';
 import { embedRoutes } from './routes/embed.js';
 import { facesRoutes } from './routes/faces.js';
 import { insightsRoutes } from './routes/insights.js';
+import { exportRoutes } from './routes/export.js';
+import { watchRoutes } from './routes/watch.js';
 import { startEmbedJob } from './workers/embed.js';
+import { startWatchFolder } from './workers/watch.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -48,6 +51,8 @@ app.register(recapsRoutes);
 app.register(embedRoutes);
 app.register(facesRoutes);
 app.register(insightsRoutes);
+app.register(exportRoutes);
+app.register(watchRoutes);
 
 // ── Serve static frontend ───────────────────────────────────────
 app.register(fastifyStatic, {
@@ -93,6 +98,19 @@ const start = async () => {
       }
     } catch (embErr) {
       console.warn('Startup embedding check skipped:', embErr);
+    }
+
+    // Auto-start watch folder if enabled (FR-1411)
+    try {
+      if (getSetting('watch_folder_enabled') === 'true') {
+        const watchFolder = getSetting('watch_folder_path') || 'photo';
+        const res = startWatchFolder(watchFolder);
+        if (res.success) {
+          console.log(`👀 [startup] Watch folder active on: ${watchFolder}`);
+        }
+      }
+    } catch (watchErr) {
+      console.warn('Startup watch folder check skipped:', watchErr);
     }
   } catch (err) {
     app.log.error(err);
