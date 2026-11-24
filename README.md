@@ -18,7 +18,8 @@
 
 Built using clean vanilla **HTML5 / CSS3 / ES2024** and conforming to [Google Chrome's Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance), Photostory delivers a blisteringly fast 60 FPS user experience with zero frontend framework bloat.
 
-📖 **คู่มือการใช้งานภาษาไทยฉบับสมบูรณ์ (Full Thai Manual):** ดูได้ที่ [`USER_MANUAL.md`](USER_MANUAL.md)
+📖 **คู่มือการใช้งานภาษาไทยฉบับสมบูรณ์ (Full Thai Manual):** ดูได้ที่ [`USER_MANUAL.md`](USER_MANUAL.md)  
+🔌 **REST API Documentation:** เอกสารอ้างอิง REST API ทั้งหมดของระบบ ดูได้ที่ [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md)
 
 ---
 

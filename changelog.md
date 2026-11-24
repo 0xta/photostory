@@ -1,5 +1,32 @@
 # Changelog
 
+## [Phase 5G] - Complete REST API Documentation & Integration - 2026-11-24
+
+### Added & Documented
+- **REST API Documentation (`API_DOCUMENTATION.md`):**
+  - Authored complete, exhaustive Markdown API documentation covering all 18 endpoint groups exposed by the Fastify backend server:
+    1. System & Dashboard (`GET /api/health`, `GET /api/dashboard`, `GET /api/jobs/:id`)
+    2. Import & Clustering (`POST /api/import`, `POST /api/recluster`, `GET /api/thumbs/:id`)
+    3. Photos Management (`GET /api/photos`, `GET /api/photos/geo`, `GET /api/photos/:id`, `GET /api/photos/:id/view`, `GET /api/photos/:id/thumb`, `PATCH /api/photos/:id`, `DELETE /api/photos/:id`, `PUT /api/photos/:id/cats`, `PUT /api/photos/:id/persons`)
+    4. Events & Timeline (`GET /api/events`, `GET /api/events/:id`, `PATCH /api/events/:id`, `DELETE /api/events/:id`)
+    5. Persons & Friends (`GET /api/persons`, `POST /api/persons`, `GET /api/persons/:id`, `PATCH /api/persons/:id`, `DELETE /api/persons/:id`)
+    6. Shared Album "X & ME" (`GET /api/persons/:id/album`, `GET /api/persons/:id/album/export`)
+    7. Face Recognition & Clustering (`POST /api/faces`, `POST /api/faces/recluster`, `GET /api/faces/:id/crop`, `GET /api/faces/clusters`, `GET /api/faces/clusters/:id`, `GET /api/faces/clusters/:id/crop`, `GET /api/persons/:id/suggestions`, `POST /api/photos/:id/confirm-face`, `POST /api/photos/:id/dismiss-face`)
+    8. Collections & Stories (`GET /api/collections`, `POST /api/collections`, `GET /api/collections/:id`, `PATCH /api/collections/:id`, `DELETE /api/collections/:id`, `POST /api/collections/:id/photos`, `DELETE /api/collections/:id/photos/:photoId`)
+    9. Places & Locations (`GET /api/places`, `POST /api/places`, `GET /api/places/:id`, `PATCH /api/places/:id`, `DELETE /api/places/:id`, `POST /api/places/:id/photos`, `DELETE /api/places/:id/photos/:photoId`)
+    10. Meals & Food Diary (`GET /api/meals`, `POST /api/meals`, `GET /api/meals/:id`, `PATCH /api/meals/:id`, `DELETE /api/meals/:id`, `POST /api/meals/:id/photos`, `DELETE /api/meals/:id/photos/:photoId`)
+    11. Recaps & Highlights (`GET /api/recaps`, `POST /api/recaps`, `GET /api/recaps/:year/:month`, `DELETE /api/recaps/:year/:month`, `GET /api/recaps/:year/:month/export`)
+    12. Insights & Life Map (`GET /api/on-this-day`, `GET /api/insights/relationships`, `GET /api/insights/social-graph`, `GET /api/map`, `GET /api/map/heatmap`)
+    13. Search & CLIP Embeddings (`GET /api/search`, `POST /api/embed`, `GET /api/embed/stats`)
+    14. Suggestions Inbox (`GET /api/suggestions`, `POST /api/suggestions/scan`, `POST /api/suggestions/:id/accept`, `POST /api/suggestions/:id/dismiss`)
+    15. Watch Folder (`GET /api/watch`, `POST /api/watch`, `POST /api/watch/scan`)
+    16. Open Export & XMP Sidecars (`GET /api/export`, `POST /api/export/xmp`)
+    17. Backup, Restore & Clear (`GET /api/backup`, `POST /api/restore`, `POST /api/clear`)
+    18. Settings & Configuration (`GET /api/settings`, `PATCH /api/settings`)
+  - Documented background job polling pattern (`jobId` -> `/api/jobs/:id`), HTTP status codes, query parameters, request bodies, response payloads, headers, and code examples.
+- **Documentation Cross-Linking:**
+  - Linked `API_DOCUMENTATION.md` in `README.md`.
+
 ## [Phase 5F] - Google Modern Web Guidance Compliance, README & View Transitions - 2026-11-24
 
 ### Added & Optimized
