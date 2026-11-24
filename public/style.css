@@ -4,9 +4,24 @@
    ══════════════════════════════════════════════════════════════ */
 
 /* ── Theme tokens ─────────────────────────────────────────── */
+:root {
+  color-scheme: dark light;
+}
+
+/* ── View Transitions (Modern Web Guidance) ───────────────────── */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.15s;
+  animation-timing-function: ease-out;
+}
 
 /* Dark theme (default) — darkroom contact-sheet */
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg:        #12151C;
   --panel:     #1A1F29;
   --panel2:    #222836;
@@ -31,6 +46,7 @@
 
 /* Warm theme — cozy amber tones */
 [data-theme="warm"] {
+  color-scheme: dark;
   --bg:        #1E1A14;
   --panel:     #2A241B;
   --panel2:    #342D22;
@@ -55,6 +71,7 @@
 
 /* Light theme — clean daylight aesthetic */
 [data-theme="light"] {
+  color-scheme: light;
   --bg:        #F5F3EE;
   --panel:     #FFFFFF;
   --panel2:    #F0ECE4;

@@ -222,6 +222,10 @@ function setupVoiceInput(btnEl, targetInputEl) {
 // ── Theme Management ─────────────────────────────────────────
 function setTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
+  const metaColorScheme = document.querySelector('meta[name="color-scheme"]');
+  if (metaColorScheme) {
+    metaColorScheme.content = theme === 'light' ? 'light' : 'dark';
+  }
   localStorage.setItem('theme', theme);
 
   document.querySelectorAll('.theme-btn').forEach((btn) => {
@@ -243,32 +247,40 @@ function initTheme() {
 
 // ── Tabs Navigation ──────────────────────────────────────────
 function switchTab(tabName) {
-  currentTab = tabName;
+  const performTabSwitch = () => {
+    currentTab = tabName;
 
-  document.querySelectorAll('.tab').forEach((t) => {
-    const isActive = t.dataset.tab === tabName;
-    t.classList.toggle('active', isActive);
-    t.setAttribute('aria-selected', isActive ? 'true' : 'false');
-  });
+    document.querySelectorAll('.tab').forEach((t) => {
+      const isActive = t.dataset.tab === tabName;
+      t.classList.toggle('active', isActive);
+      t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
 
-  document.querySelectorAll('.view').forEach((v) => {
-    v.classList.toggle('active', v.id === `view-${tabName}`);
-  });
+    document.querySelectorAll('.view').forEach((v) => {
+      v.classList.toggle('active', v.id === `view-${tabName}`);
+    });
 
-  if (tabName === 'dashboard') loadDashboard();
-  if (tabName === 'events') loadEvents();
-  if (tabName === 'photos') loadPhotos();
-  if (tabName === 'friends') loadFriends();
-  if (tabName === 'stories') loadStories();
-  if (tabName === 'places') loadPlaces();
-  if (tabName === 'meals') loadMeals();
-  if (tabName === 'suggestions') loadSuggestions();
-  if (tabName === 'recap') loadRecap(currentRecapYear, currentRecapMonth);
-  if (tabName === 'map') {
-    loadMap(true);
-    setTimeout(() => {
-      if (mapInstance) mapInstance.invalidateSize();
-    }, 150);
+    if (tabName === 'dashboard') loadDashboard();
+    if (tabName === 'events') loadEvents();
+    if (tabName === 'photos') loadPhotos();
+    if (tabName === 'friends') loadFriends();
+    if (tabName === 'stories') loadStories();
+    if (tabName === 'places') loadPlaces();
+    if (tabName === 'meals') loadMeals();
+    if (tabName === 'suggestions') loadSuggestions();
+    if (tabName === 'recap') loadRecap(currentRecapYear, currentRecapMonth);
+    if (tabName === 'map') {
+      loadMap(true);
+      setTimeout(() => {
+        if (mapInstance) mapInstance.invalidateSize();
+      }, 150);
+    }
+  };
+
+  if (document.startViewTransition) {
+    document.startViewTransition(() => performTabSwitch());
+  } else {
+    performTabSwitch();
   }
 }
 
@@ -312,7 +324,7 @@ async function loadDashboard() {
 
     // 2. Monthly histogram (FR-702)
     const histContainer = document.getElementById('dashboard-histogram');
-    histContainer.innerHTML = '';
+    histContainer.replaceChildren();
     const maxCount = Math.max(...data.months, 1);
 
     data.months.forEach((count, idx) => {
@@ -340,7 +352,7 @@ async function loadDashboard() {
 
     // 4. Top friends
     const topFriendsEl = document.getElementById('dashboard-top-friends');
-    topFriendsEl.innerHTML = '';
+    topFriendsEl.replaceChildren();
     if (data.top_friends.length === 0) {
       topFriendsEl.innerHTML = '<p class="muted" style="font-size: 0.85rem;">ยังไม่มีรูปที่ติดแท็กเพื่อน</p>';
     } else {
@@ -361,7 +373,7 @@ async function loadDashboard() {
 
     // 5. Recent events
     const recentEventsEl = document.getElementById('dashboard-events');
-    recentEventsEl.innerHTML = '';
+    recentEventsEl.replaceChildren();
     data.recent_events.forEach((ev) => {
       recentEventsEl.appendChild(createEventCard(ev));
     });
@@ -376,7 +388,7 @@ async function loadDashboard() {
       if (otdData && otdData.groups && otdData.groups.length > 0) {
         otdCard.style.display = 'block';
         otdSub.textContent = `${otdData.total_photos} รูปในวันนี้จากปีก่อนหน้า`;
-        otdContent.innerHTML = '';
+        otdContent.replaceChildren();
 
         otdData.groups.forEach((g) => {
           const grpEl = document.createElement('div');
@@ -419,7 +431,7 @@ async function loadDashboard() {
 
       if (hasLapsed || hasAnniv) {
         relCard.style.display = 'block';
-        relList.innerHTML = '';
+        relList.replaceChildren();
 
         if (hasAnniv) {
           relData.anniversaries.forEach((a) => {
@@ -472,7 +484,7 @@ async function loadEvents() {
   try {
     const res = await api('/events');
     const container = document.getElementById('events-list');
-    container.innerHTML = '';
+    container.replaceChildren();
 
     // Check dateless photos
     const datelessRes = await api('/photos?gps=nodate&limit=1');
@@ -592,7 +604,7 @@ async function openEventDetail(eventId) {
 
     // Photos grid
     const photosEl = document.getElementById('event-modal-photos');
-    photosEl.innerHTML = '';
+    photosEl.replaceChildren();
     ev.photos.forEach((p) => {
       const card = createPhotoThumbCard(p);
       card.addEventListener('click', () => openPhotoModal(p.id));
@@ -632,7 +644,7 @@ async function loadPhotos(page = photosCurrentPage) {
     }
 
     const container = document.getElementById('photos-list');
-    container.innerHTML = '';
+    container.replaceChildren();
 
     const startIdx = photosTotalCount === 0 ? 0 : offset + 1;
     const endIdx = Math.min(offset + res.items.length, photosTotalCount);
@@ -783,7 +795,7 @@ async function openPhotoModal(photoId) {
 
     // Render category chips (FR-402)
     const catsContainer = document.getElementById('photo-modal-cats');
-    catsContainer.innerHTML = '';
+    catsContainer.replaceChildren();
     CATEGORIES.forEach((cat) => {
       const isSelected = photo.cats && photo.cats.includes(cat.id);
       const chip = document.createElement('span');
@@ -810,7 +822,7 @@ async function openPhotoModal(photoId) {
     // Render unconfirmed face suggestion chips (FR-506 / AC-18)
     const suggestionsContainer = document.getElementById('photo-modal-face-suggestions');
     if (suggestionsContainer) {
-      suggestionsContainer.innerHTML = '';
+      suggestionsContainer.replaceChildren();
       const unconfirmedFriends = (photo.friends || []).filter((f) => f.source === 'face-suggestion');
       if (unconfirmedFriends.length > 0) {
         suggestionsContainer.style.display = 'block';
@@ -852,7 +864,7 @@ async function openPhotoModal(photoId) {
 
     // Render friend chips (FR-402)
     const friendsContainer = document.getElementById('photo-modal-friends');
-    friendsContainer.innerHTML = '';
+    friendsContainer.replaceChildren();
     const taggedPersonIds = new Set((photo.friends || []).filter((f) => f.source !== 'face-suggestion').map((f) => f.id));
 
     allFriends.forEach((friend) => {
@@ -912,7 +924,7 @@ async function openPhotoModal(photoId) {
 
     const placesContainer = document.getElementById('photo-modal-places-list');
     if (placesContainer) {
-      placesContainer.innerHTML = '';
+      placesContainer.replaceChildren();
       (photo.places || []).forEach((pl) => {
         const chip = document.createElement('span');
         chip.className = 'type-pill ' + (pl.type || 'other');
@@ -975,7 +987,7 @@ async function loadFriends() {
     });
 
     const container = document.getElementById('friends-list');
-    container.innerHTML = '';
+    container.replaceChildren();
 
     if (allFriends.length === 0) {
       container.innerHTML = '<p class="muted" style="grid-column: 1/-1;">ยังไม่มีเพื่อนที่บันทึก กดปุ่ม "+ เพิ่มเพื่อนใหม่" เพื่อเริ่มต้น</p>';
@@ -1331,7 +1343,7 @@ async function openFriendDetail(personId) {
 
     // Timeline
     const timelineEl = document.getElementById('friend-detail-timeline');
-    timelineEl.innerHTML = '';
+    timelineEl.replaceChildren();
     if (person.timeline.length === 0) {
       timelineEl.innerHTML = '<p class="muted" style="font-size: 0.85rem;">ยังไม่มีประวัติการพบเจอในเหตุการณ์</p>';
     } else {
@@ -1351,7 +1363,7 @@ async function openFriendDetail(personId) {
 
     // Photos
     const photosEl = document.getElementById('friend-detail-photos');
-    photosEl.innerHTML = '';
+    photosEl.replaceChildren();
     person.photos.forEach((p) => {
       const card = createPhotoThumbCard(p);
       card.addEventListener('click', () => openPhotoModal(p.id));
@@ -1370,7 +1382,7 @@ function openAddFriendModal() {
   document.getElementById('input-friend-note').value = '';
 
   const picker = document.getElementById('friend-color-picker');
-  picker.innerHTML = '';
+  picker.replaceChildren();
   let selectedColor = FRIEND_PALETTE[0];
 
   FRIEND_PALETTE.forEach((hex, idx) => {
@@ -1547,7 +1559,7 @@ async function renderMapHeatmap(fit = false) {
 function renderTopPlacesList(places) {
   const container = document.getElementById('map-top-places-list');
   if (!container) return;
-  container.innerHTML = '';
+  container.replaceChildren();
 
   if (!places || places.length === 0) {
     container.innerHTML =
@@ -1752,7 +1764,7 @@ async function findNearbyPhotos(lat, lon) {
       return;
     }
 
-    listEl.innerHTML = '';
+    listEl.replaceChildren();
     res.features.forEach((f) => {
       const p = f.properties;
       const item = document.createElement('div');
@@ -1808,7 +1820,7 @@ async function loadStories() {
       return;
     }
 
-    listEl.innerHTML = '';
+    listEl.replaceChildren();
     allStories.forEach((story) => {
       const card = document.createElement('div');
       card.className = 'story-card';
@@ -1886,7 +1898,7 @@ async function openStoryDetail(storyId) {
       if (story.photos.length === 0) {
         timelineEl.innerHTML = '<p class="muted" style="font-size:0.85rem;">ยังไม่มีรูปภาพในโปรเจกต์นี้</p>';
       } else {
-        timelineEl.innerHTML = '';
+        timelineEl.replaceChildren();
         story.photos.forEach((p, idx) => {
           const item = document.createElement('div');
           item.className = 'progress-timeline-item';
@@ -1911,7 +1923,7 @@ async function openStoryDetail(storyId) {
       if (story.photos.length === 0) {
         photosEl.innerHTML = '<p class="muted" style="font-size:0.85rem;">ยังไม่มีรูปภาพในเรื่องราวนี้</p>';
       } else {
-        photosEl.innerHTML = '';
+        photosEl.replaceChildren();
         story.photos.forEach((p) => {
           const card = document.createElement('div');
           card.className = 'photo-card';
@@ -1978,7 +1990,7 @@ async function loadSuggestions() {
       return;
     }
 
-    listEl.innerHTML = '';
+    listEl.replaceChildren();
     allSuggestions.forEach((s) => {
       const card = document.createElement('div');
       card.className = 'suggestion-card';
@@ -2118,7 +2130,7 @@ async function openFaceClusterModal(suggId, clusterId, suggestedName) {
     // Render thumbnail strip
     const thumbsStrip = document.getElementById('face-cluster-modal-thumbs');
     if (thumbsStrip) {
-      thumbsStrip.innerHTML = '';
+      thumbsStrip.replaceChildren();
       currentClusterModalState.members.forEach((m, idx) => {
         const img = document.createElement('img');
         img.className = `face-cluster-strip-item ${idx === 0 ? 'active' : ''}`;
@@ -2256,7 +2268,7 @@ async function loadPlaces() {
       return;
     }
 
-    listEl.innerHTML = '';
+    listEl.replaceChildren();
     allPlaces.forEach((place) => {
       const card = document.createElement('div');
       card.className = 'place-card';
@@ -2353,7 +2365,7 @@ async function openPlaceDetail(placeId) {
       if (place.photos.length === 0) {
         timelineEl.innerHTML = '<p class="muted" style="font-size:0.85rem;">ยังไม่มีรูปภาพในโปรเจกต์นี้</p>';
       } else {
-        timelineEl.innerHTML = '';
+        timelineEl.replaceChildren();
         place.photos.forEach((p, idx) => {
           const item = document.createElement('div');
           item.className = 'progress-timeline-item';
@@ -2378,7 +2390,7 @@ async function openPlaceDetail(placeId) {
       if (place.photos.length === 0) {
         photosEl.innerHTML = '<p class="muted" style="font-size:0.85rem;">ยังไม่มีรูปภาพที่ผูกกับสถานที่นี้</p>';
       } else {
-        photosEl.innerHTML = '';
+        photosEl.replaceChildren();
         place.photos.forEach((p) => {
           const card = document.createElement('div');
           card.className = 'photo-card';
@@ -2486,7 +2498,7 @@ async function loadMeals() {
       groupsByMonth[groupKey].meals.push(meal);
     });
 
-    containerEl.innerHTML = '';
+    containerEl.replaceChildren();
     const sortedGroups = Object.values(groupsByMonth).sort((a, b) => b.sortKey - a.sortKey);
 
     sortedGroups.forEach((group) => {
@@ -2620,7 +2632,7 @@ async function openMealDetail(mealId) {
     document.getElementById('meal-detail-photo-count').textContent = String(meal.photos.length);
 
     const photosGrid = document.getElementById('meal-detail-photos');
-    photosGrid.innerHTML = '';
+    photosGrid.replaceChildren();
     meal.photos.forEach((photo) => {
       const card = document.createElement('div');
       card.className = 'photo-card';
