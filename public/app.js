@@ -102,6 +102,26 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+// ── Job Polling Helper ───────────────────────────────────────
+function pollJob(jobId, onComplete, intervalMs = 500) {
+  const pollInterval = setInterval(async () => {
+    try {
+      const job = await api(`/jobs/${jobId}`);
+      if (job.status === 'done' || job.status === 'error') {
+        clearInterval(pollInterval);
+        if (typeof onComplete === 'function') {
+          onComplete(job);
+        }
+      }
+    } catch (err) {
+      clearInterval(pollInterval);
+      if (typeof onComplete === 'function') {
+        onComplete({ status: 'error', error: err.message });
+      }
+    }
+  }, intervalMs);
+}
+
 // ── Date Formatting Helpers (Appendix C) ─────────────────────
 function formatThaiDate(ms) {
   if (!ms) return 'ไม่มีวันที่';
@@ -3077,15 +3097,33 @@ async function init() {
 
   // Scan faces button (Phase 3)
   document.getElementById('btn-scan-faces')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-scan-faces');
+    const originalText = btn ? btn.textContent : '🔍 ตรวจจับใบหน้า';
     try {
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ กำลังตรวจจับใบหน้า...';
+      }
       const res = await api('/faces', { method: 'POST' });
       showToast('กำลังสแกนและจัดกลุ่มใบหน้าในพื้นหลัง...', 'info');
-      pollJob(res.jobId, () => {
-        showToast('ตรวจจับและจัดกลุ่มใบหน้าเรียบร้อยแล้ว', 'success');
-        loadSuggestions();
-        loadFriends();
+      pollJob(res.jobId, (job) => {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+        if (job && job.status === 'error') {
+          showToast(`เกิดข้อผิดพลาดในการตรวจจับใบหน้า: ${job.error || 'ไม่ทราบสาเหตุ'}`, 'error');
+        } else {
+          showToast(`ตรวจจับและจัดกลุ่มใบหน้าเรียบร้อยแล้ว (พบ ${job?.added || 0} ใบหน้า)`, 'success');
+          loadSuggestions();
+          loadFriends();
+        }
       });
-    } catch {
+    } catch (err) {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
       showToast('ไม่สามารถเริ่มงานตรวจจับใบหน้าได้', 'error');
     }
   });
